@@ -88,6 +88,10 @@ export function ReaderScreen({
   const pointerState = useRef<PointerState | null>(null);
   const progressPointerIdRef = useRef<number | null>(null);
   const snapTimeoutRef = useRef<number | null>(null);
+  const dragAnimationFrameRef = useRef<number | null>(null);
+  const pendingDragOffsetRef = useRef(0);
+  const dragOffsetRef = useRef(0);
+  const isDraggingRef = useRef(false);
   const stageRef = useRef<HTMLElement | null>(null);
   const trackRef = useRef<HTMLDivElement | null>(null);
   const progressTrackRef = useRef<HTMLDivElement | null>(null);
@@ -101,12 +105,38 @@ export function ReaderScreen({
     }
   }
 
+  function flushDragOffset(nextOffset: number) {
+    dragOffsetRef.current = nextOffset;
+    setDragOffset(nextOffset);
+  }
+
+  function scheduleDragOffset(nextOffset: number) {
+    pendingDragOffsetRef.current = nextOffset;
+    if (dragAnimationFrameRef.current !== null) {
+      return;
+    }
+
+    dragAnimationFrameRef.current = window.requestAnimationFrame(() => {
+      dragAnimationFrameRef.current = null;
+      flushDragOffset(pendingDragOffsetRef.current);
+    });
+  }
+
+  function clearDragAnimationFrame() {
+    if (dragAnimationFrameRef.current !== null) {
+      window.cancelAnimationFrame(dragAnimationFrameRef.current);
+      dragAnimationFrameRef.current = null;
+    }
+  }
+
   function animateBackToRest() {
     clearSnapTimeout();
+    clearDragAnimationFrame();
     setTransitionEnabled(true);
     setSnapDirection(null);
-    setDragOffset(0);
+    flushDragOffset(0);
     setIsDragging(false);
+    isDraggingRef.current = false;
     snapTimeoutRef.current = window.setTimeout(() => {
       setTransitionEnabled(false);
       clearSnapTimeout();
@@ -126,8 +156,10 @@ export function ReaderScreen({
 
     setTransitionEnabled(true);
     setIsDragging(false);
+    isDraggingRef.current = false;
     setSnapDirection(direction);
-    setDragOffset(direction === 'forward' ? -stageHeight : stageHeight);
+    clearDragAnimationFrame();
+    flushDragOffset(direction === 'forward' ? -stageHeight : stageHeight);
   }
 
   function navigateByTap(clientY: number) {
@@ -166,7 +198,10 @@ export function ReaderScreen({
   }, [isDragging, nextPortion, onNext, onPrevious, previousPortion, snapDirection]);
 
   useEffect(() => {
-    return () => clearSnapTimeout();
+    return () => {
+      clearSnapTimeout();
+      clearDragAnimationFrame();
+    };
   }, []);
 
   useEffect(() => {
@@ -203,8 +238,9 @@ export function ReaderScreen({
     }
 
     setTransitionEnabled(false);
-    setDragOffset(0);
+    flushDragOffset(0);
     setIsDragging(false);
+    isDraggingRef.current = false;
     setSnapDirection(null);
   }, [portion?.id]);
 
@@ -443,8 +479,12 @@ export function ReaderScreen({
           ? deltaY * 0.22
           : deltaY;
 
-    setIsDragging(true);
-    setDragOffset(limitedOffset);
+    if (!isDraggingRef.current) {
+      isDraggingRef.current = true;
+      setIsDragging(true);
+    }
+
+    scheduleDragOffset(limitedOffset);
   }
 
   function handlePointerEnd(event: React.PointerEvent<HTMLElement>) {
@@ -461,7 +501,9 @@ export function ReaderScreen({
 
     if (!movedEnoughForTapCancel) {
       setIsDragging(false);
-      setDragOffset(0);
+      isDraggingRef.current = false;
+      clearDragAnimationFrame();
+      flushDragOffset(0);
       setTransitionEnabled(false);
       if (!state.startedOnInteractive) {
         navigateByTap(event.clientY);
@@ -499,8 +541,9 @@ export function ReaderScreen({
 
     const direction = snapDirection;
     setTransitionEnabled(false);
-    setDragOffset(0);
+    flushDragOffset(0);
     setIsDragging(false);
+    isDraggingRef.current = false;
     setSnapDirection(null);
 
     if (direction === 'forward') {

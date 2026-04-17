@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import type { PortionBlock, ReaderPortion, ReaderSettings } from '../../types/reader';
 import { getBlockTypography } from '../../lib/portioning/styleMap';
 
@@ -6,7 +7,7 @@ interface PortionViewProps {
   settings: ReaderSettings;
 }
 
-function TextSlice({
+const TextSlice = memo(function TextSlice({
   block,
   settings
 }: {
@@ -60,9 +61,9 @@ function TextSlice({
       </div>
     </article>
   );
-}
+});
 
-export function PortionView({ portion, settings }: PortionViewProps) {
+export const PortionView = memo(function PortionView({ portion, settings }: PortionViewProps) {
   return (
     <div className="portion-sheet">
       {portion.blocks.map((block) => {
@@ -89,4 +90,4 @@ export function PortionView({ portion, settings }: PortionViewProps) {
       })}
     </div>
   );
-}
+});
