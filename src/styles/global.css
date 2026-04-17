@@ -264,6 +264,7 @@ button {
   justify-content: space-between;
   gap: 20px;
   color: var(--text);
+  opacity: 0.5;
   padding:
     0
     calc(22px + var(--safe-right))
