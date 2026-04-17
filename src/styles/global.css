@@ -352,7 +352,7 @@ button {
   width: 18px;
   display: flex;
   justify-content: center;
-  pointer-events: none;
+  pointer-events: auto;
 }
 
 .chapter-progress-track {
@@ -363,6 +363,9 @@ button {
   flex-direction: column;
   gap: 6px;
   padding: 6px 0;
+  pointer-events: auto;
+  touch-action: none;
+  cursor: grab;
 }
 
 .chapter-progress-segment {
@@ -390,6 +393,7 @@ button {
   box-shadow:
     0 0 0 3px rgba(240, 165, 92, 0.24),
     0 6px 18px rgba(0, 0, 0, 0.2);
+  pointer-events: none;
 }
 
 .reader-stage.dragging,
