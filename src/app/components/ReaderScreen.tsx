@@ -388,15 +388,33 @@ export function ReaderScreen({
     }
 
     const localY = clamp(clientY - rect.top, 0, rect.height);
-    const matchingSegment =
-      chapterTrackMetrics.find((segment) => {
-        const start = segment.topPx;
-        const end = segment.topPx + segment.heightPx;
-        return localY >= start && localY <= end;
-      }) ??
-      (localY < chapterTrackMetrics[0].topPx
-        ? chapterTrackMetrics[0]
-        : chapterTrackMetrics[chapterTrackMetrics.length - 1]);
+    let matchingSegment = chapterTrackMetrics.find((segment) => {
+      const start = segment.topPx;
+      const end = segment.topPx + segment.heightPx;
+      return localY >= start && localY <= end;
+    });
+
+    if (!matchingSegment) {
+      if (localY <= chapterTrackMetrics[0].topPx) {
+        matchingSegment = chapterTrackMetrics[0];
+      } else {
+        for (let index = 0; index < chapterTrackMetrics.length - 1; index += 1) {
+          const current = chapterTrackMetrics[index];
+          const next = chapterTrackMetrics[index + 1];
+          const currentEnd = current.topPx + current.heightPx;
+
+          if (localY >= currentEnd && localY <= next.topPx) {
+            const midpoint = (currentEnd + next.topPx) / 2;
+            matchingSegment = localY <= midpoint ? current : next;
+            break;
+          }
+        }
+      }
+
+      if (!matchingSegment) {
+        matchingSegment = chapterTrackMetrics[chapterTrackMetrics.length - 1];
+      }
+    }
 
     if (!matchingSegment || matchingSegment.portionCount <= 0) {
       return null;
