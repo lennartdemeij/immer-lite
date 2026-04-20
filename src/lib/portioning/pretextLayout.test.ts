@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { TextBlock } from '../../types/book';
 import type { ReaderSettings } from '../../types/reader';
-import { buildRichSlice } from './pretextLayout';
+import { buildRichSlice, restoreCollapsedSpacesForRender } from './pretextLayout';
 
 const settings: ReaderSettings = {
   fontSize: 21,
@@ -87,5 +87,68 @@ describe('buildRichSlice', () => {
 
     const slice = buildRichSlice(block, 0, 2, settings);
     expect(slice.items.map((item) => item.text).join('')).toBe('Sentence one. Sentence two.');
+  });
+
+  it('restores collapsed spaces between fragments on the same rendered line', () => {
+    const slice = buildRichSlice(makeBlock(), 0, 2, settings);
+
+    const lines = restoreCollapsedSpacesForRender(
+      [
+        {
+          fragments: [
+            {
+              itemIndex: 0,
+              gapBefore: 0,
+              text: 'Sentence one.',
+              start: { segmentIndex: 0, graphemeIndex: 0 }
+            },
+            {
+              itemIndex: 1,
+              gapBefore: 8,
+              text: 'Sentence two.',
+              start: { segmentIndex: 0, graphemeIndex: 0 }
+            }
+          ]
+        }
+      ],
+      slice
+    );
+
+    expect(lines[0].fragments.map((fragment) => fragment.text).join('')).toBe(
+      'Sentence one. Sentence two.'
+    );
+  });
+
+  it('restores collapsed spaces across a rendered line break', () => {
+    const slice = buildRichSlice(makeBlock(), 0, 2, settings);
+
+    const lines = restoreCollapsedSpacesForRender(
+      [
+        {
+          fragments: [
+            {
+              itemIndex: 0,
+              gapBefore: 0,
+              text: 'Sentence one.',
+              start: { segmentIndex: 0, graphemeIndex: 0 }
+            }
+          ]
+        },
+        {
+          fragments: [
+            {
+              itemIndex: 1,
+              gapBefore: 0,
+              text: 'Sentence two.',
+              start: { segmentIndex: 0, graphemeIndex: 0 }
+            }
+          ]
+        }
+      ],
+      slice
+    );
+
+    expect(lines[0].fragments.map((fragment) => fragment.text).join('')).toBe('Sentence one. ');
+    expect(lines[1].fragments.map((fragment) => fragment.text).join('')).toBe('Sentence two.');
   });
 });

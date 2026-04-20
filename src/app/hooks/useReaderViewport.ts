@@ -4,6 +4,7 @@ import type { ViewportMetrics } from '../../types/reader';
 const TOP_CHROME = 94;
 const BOTTOM_CHROME = 12;
 const VERTICAL_PADDING = 16;
+const PORTION_EDGE_PADDING = 28;
 
 export function useReaderViewport(horizontalPadding: number) {
   const [node, setNode] = useState<HTMLDivElement | null>(null);
@@ -43,7 +44,7 @@ export function useReaderViewport(horizontalPadding: number) {
       contentWidth: Math.max(240, size.width - horizontalPadding * 2),
       contentHeight: Math.max(
         200,
-        size.height - TOP_CHROME - BOTTOM_CHROME - VERTICAL_PADDING * 2
+        size.height - TOP_CHROME - BOTTOM_CHROME - VERTICAL_PADDING * 2 - PORTION_EDGE_PADDING * 2
       )
     };
   }, [horizontalPadding, size.height, size.width]);
@@ -57,5 +58,6 @@ export function useReaderViewport(horizontalPadding: number) {
 export const READER_CHROME = {
   top: TOP_CHROME,
   bottom: BOTTOM_CHROME,
-  verticalPadding: VERTICAL_PADDING
+  verticalPadding: VERTICAL_PADDING,
+  portionEdgePadding: PORTION_EDGE_PADDING
 };

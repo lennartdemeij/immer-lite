@@ -403,56 +403,94 @@ button {
   cursor: grabbing;
 }
 
-.reader-stage.transitioning .portion-track {
-  transition: transform 240ms ease-out;
-}
-
 .portion-track {
-  height: 300%;
-  display: flex;
-  flex-direction: column;
-  will-change: transform;
+  position: relative;
+  height: 100%;
 }
 
 .portion-pane {
-  flex: 0 0 calc(100% / 3);
-  min-height: 0;
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.portion-pane::after {
-  content: "";
   position: absolute;
-  inset: 0;
-  pointer-events: none;
+  inset-inline: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  will-change: transform, opacity;
 }
 
-.portion-pane-previous::after {
-  background: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.04) 100%);
-}
-
-.portion-pane-next::after {
-  background: linear-gradient(0deg, transparent 0%, rgba(0, 0, 0, 0.04) 100%);
+.reader-stage.transitioning .portion-pane {
+  transition: transform 240ms ease-out, opacity 240ms linear;
 }
 
 .portion-sheet {
-  flex: 0 0 min(100%, var(--portion-width, 100%));
+  flex: 0 0 auto;
   width: min(100%, var(--portion-width, 100%));
-  max-height: 100%;
+  height: auto;
+  max-height: none;
   margin-inline: auto;
   min-width: 0;
-  padding: 20px 0;
-  display: grid;
-  align-content: center;
+  padding: var(--portion-edge-padding, 28px) 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
   color: var(--text);
   pointer-events: none;
+  overflow: visible;
+}
+
+.portion-sheet article,
+.portion-sheet figure,
+.portion-sheet figcaption {
+  margin-inline: 0;
+}
+
+.portion-sheet a {
+  color: inherit;
 }
 
 .portion-pane-current .portion-sheet {
   pointer-events: auto;
+}
+
+.continuation-bridge-shell {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.reader-stage.transitioning .continuation-bridge-shell {
+  transition: transform 240ms ease-out, opacity 180ms ease-out;
+}
+
+.continuation-bridge-shell.fade-in {
+  animation: continuation-bridge-fade-in 240ms ease-out both;
+}
+
+@keyframes continuation-bridge-fade-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.continuation-bridge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.continuation-bridge span {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--accent);
+  opacity: 0.72;
+  box-shadow: 0 0 12px rgba(0, 0, 0, 0.14);
 }
 
 .reader-block {

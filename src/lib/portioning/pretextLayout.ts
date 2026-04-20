@@ -30,6 +30,20 @@ interface RichSlice {
   meta: RichItemMeta[];
 }
 
+interface MaterializedRichFragment {
+  itemIndex: number;
+  gapBefore: number;
+  text: string;
+  start: {
+    segmentIndex: number;
+    graphemeIndex: number;
+  };
+}
+
+interface MaterializedRichLine {
+  fragments: MaterializedRichFragment[];
+}
+
 function dedupeMarks(marks: string[]): string[] {
   return Array.from(new Set(marks));
 }
@@ -46,12 +60,10 @@ function getSentenceInlineSlice(
 }
 
 function normalizeSentenceInlines(inlines: BookInline[]): BookInline[] {
-  let firstSeen = false;
-
-  const normalized = inlines
+  return inlines
     .map((inline, index) => {
       let text = inline.text;
-      if (!firstSeen) {
+      if (index === 0) {
         text = text.replace(/^\s+/, '');
       }
       if (index === inlines.length - 1) {
@@ -60,15 +72,12 @@ function normalizeSentenceInlines(inlines: BookInline[]): BookInline[] {
       if (text.length === 0) {
         return null;
       }
-      firstSeen = true;
       return {
         ...inline,
         text
       };
     })
     .filter((value): value is BookInline => Boolean(value));
-
-  return normalized;
 }
 
 export function buildRichSlice(
@@ -82,6 +91,15 @@ export function buildRichSlice(
 
   for (let index = startSentence; index < endSentence; index += 1) {
     const sentenceInlines = normalizeSentenceInlines(getSentenceInlineSlice(block, index));
+
+    if (index > startSentence && sentenceInlines.length > 0) {
+      const firstInline = sentenceInlines[0];
+      sentenceInlines[0] = {
+        ...firstInline,
+        text: /^\s/.test(firstInline.text) ? firstInline.text : ` ${firstInline.text}`
+      };
+    }
+
     sentenceInlines.forEach((inline) => {
       items.push({
         text: inline.text,
@@ -94,18 +112,67 @@ export function buildRichSlice(
         href: inline.href
       });
     });
-
-    if (index < endSentence - 1 && items.length > 0) {
-      const lastItem = items[items.length - 1];
-      const lastMeta = meta[meta.length - 1];
-      if (!/\s$/.test(lastItem.text)) {
-        lastItem.text += ' ';
-        lastMeta.text += ' ';
-      }
-    }
   }
 
   return { items, meta };
+}
+
+function fragmentStartsItemBoundary(fragment: MaterializedRichFragment): boolean {
+  return fragment.start.segmentIndex === 0 && fragment.start.graphemeIndex === 0;
+}
+
+function itemHasCollapsedLeadingSpace(
+  item: RichSlice['items'][number] | undefined
+): boolean {
+  return item ? /^[ \t\n\f\r]+/.test(item.text) : false;
+}
+
+export function restoreCollapsedSpacesForRender(
+  lines: MaterializedRichLine[],
+  slice: RichSlice
+): RenderLine[] {
+  const renderedLines: RenderLine[] = [];
+
+  lines.forEach((line, lineIndex) => {
+    const fragments: RenderFragment[] = [];
+
+    line.fragments.forEach((fragment, fragmentIndex) => {
+      const meta = slice.meta[fragment.itemIndex];
+      const item = slice.items[fragment.itemIndex];
+      let text = fragment.text;
+
+      if (
+        fragmentStartsItemBoundary(fragment) &&
+        itemHasCollapsedLeadingSpace(item)
+      ) {
+        const previousFragmentInLine = fragments[fragments.length - 1];
+        if (previousFragmentInLine) {
+          text = ` ${text}`;
+        } else {
+          const previousLine = renderedLines[lineIndex - 1];
+          const previousLineFragment = previousLine?.fragments[previousLine.fragments.length - 1];
+          if (previousLineFragment && !/\s$/.test(previousLineFragment.text)) {
+            previousLineFragment.text = `${previousLineFragment.text} `;
+          }
+        }
+      }
+
+      fragments.push({
+        key: `fragment-${lineIndex}-${fragmentIndex}`,
+        text,
+        font: meta?.font ?? item?.font ?? '',
+        marks: meta?.marks ?? [],
+        href: meta?.href
+      });
+    });
+
+    renderedLines.push({
+      key: `line-${lineIndex}`,
+      fragments
+    });
+  });
+
+  return renderedLines;
 }
 
 function materializeLines(
@@ -113,30 +180,21 @@ function materializeLines(
   width: number
 ): RenderLine[] {
   const prepared = prepareRichInline(slice.items);
-  const lines: RenderLine[] = [];
-  let lineIndex = 0;
+  const materializedLines: MaterializedRichLine[] = [];
 
   walkRichInlineLineRanges(prepared, width, (range) => {
     const materialized = materializeRichInlineLineRange(prepared, range);
-    const fragments: RenderFragment[] = materialized.fragments.map((fragment, index) => {
-      const meta = slice.meta[fragment.itemIndex];
-      return {
-        key: `fragment-${lineIndex}-${index}`,
+    materializedLines.push({
+      fragments: materialized.fragments.map((fragment) => ({
+        itemIndex: fragment.itemIndex,
+        gapBefore: fragment.gapBefore,
         text: fragment.text,
-        font: meta?.font ?? slice.items[fragment.itemIndex]?.font ?? '',
-        marks: meta?.marks ?? [],
-        href: meta?.href
-      };
+        start: fragment.start
+      }))
     });
-
-    lines.push({
-      key: `line-${lineIndex}`,
-      fragments
-    });
-    lineIndex += 1;
   });
 
-  return lines;
+  return restoreCollapsedSpacesForRender(materializedLines, slice);
 }
 
 export interface TextSliceMeasurement {

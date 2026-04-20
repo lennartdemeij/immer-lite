@@ -322,9 +322,6 @@ export function App() {
           </button>
         </div>
       )}
-
-      {book && !canGoPrevious ? <div className="edge-hint top">Start of book</div> : null}
-      {book && !canGoNext ? <div className="edge-hint bottom">End of book</div> : null}
     </div>
   );
 }
