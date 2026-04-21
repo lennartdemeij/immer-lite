@@ -397,10 +397,30 @@ button {
   pointer-events: none;
 }
 
+.chapter-progress-annotation {
+  position: absolute;
+  left: 50%;
+  width: 12px;
+  height: 2px;
+  border-radius: 999px;
+  transform: translate(-50%, -50%);
+  background: rgba(240, 165, 92, 0.85);
+  box-shadow: 0 0 0 1px rgba(18, 20, 23, 0.24);
+  pointer-events: none;
+}
+
 .reader-stage.dragging,
 .reader-stage.dragging * {
   user-select: none;
   cursor: grabbing;
+}
+
+.portion-pane.selection-enabled .reader-lines,
+.portion-pane.selection-enabled .reader-lines *,
+.portion-pane.selection-enabled .reader-block,
+.portion-pane.selection-enabled .reader-block * {
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 .portion-track {
@@ -550,6 +570,106 @@ button {
   text-decoration: underline;
   text-decoration-thickness: 0.08em;
   text-decoration-color: rgba(181, 95, 45, 0.38);
+}
+
+.annotation-text {
+  text-decoration: underline;
+  text-decoration-thickness: 0.11em;
+  text-underline-offset: 0.16em;
+  text-decoration-color: rgba(240, 165, 92, 0.86);
+}
+
+.annotation-sheet-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgba(6, 8, 12, 0.28);
+  z-index: 34;
+}
+
+.annotation-sheet {
+  position: absolute;
+  left: calc(12px + var(--safe-left));
+  right: calc(12px + var(--safe-right));
+  bottom: calc(12px + var(--safe-bottom));
+  z-index: 35;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.annotation-sheet-inner {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 20px;
+  background: var(--surface-strong);
+  border: 1px solid var(--stroke);
+  box-shadow: var(--shadow);
+}
+
+.annotation-selection-preview,
+.annotation-note-copy {
+  margin: 0;
+  color: var(--text);
+}
+
+.annotation-textarea {
+  flex: 1;
+  width: 100%;
+  resize: none;
+  border: 1px solid var(--stroke);
+  border-radius: 16px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  outline: none;
+  font-size: 16px;
+  line-height: 1.35;
+  min-height: 44px;
+  max-height: 68px;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.annotation-compose-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+}
+
+.annotation-save-button {
+  border: 1px solid var(--stroke);
+  background: var(--surface);
+  color: var(--text);
+  width: 46px;
+  height: 46px;
+  padding: 0;
+  border-radius: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.annotation-save-icon {
+  width: 20px;
+  height: 20px;
+  display: block;
+  color: var(--text);
+}
+
+.annotation-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.annotation-actions button {
+  border: 1px solid var(--stroke);
+  background: var(--surface);
+  color: var(--text);
+  padding: 9px 13px;
+  border-radius: 999px;
 }
 
 .scene-break {

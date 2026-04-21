@@ -69,7 +69,9 @@ function splitInlineRange(
   return {
     ...inline,
     id: nextId,
-    text: slice
+    text: slice,
+    startOffset: (inline.startOffset ?? 0) + start,
+    endOffset: (inline.startOffset ?? 0) + end
   };
 }
 
@@ -100,7 +102,9 @@ function sentenceUnitsFromInlineContent(
 
     sourceInlineContent.push({
       ...inline,
-      text
+      text,
+      startOffset: cursor,
+      endOffset: cursor + text.length
     });
     const currentInline = sourceInlineContent[sourceInlineContent.length - 1];
     offsetMap.push({

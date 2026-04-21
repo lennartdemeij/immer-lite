@@ -19,6 +19,9 @@ interface RichItemMeta {
   font: string;
   marks: string[];
   href?: string;
+  blockStart?: number;
+  blockEnd?: number;
+  leadingSpaceOffset?: number;
 }
 
 interface RichSlice {
@@ -94,10 +97,20 @@ export function buildRichSlice(
 
     if (index > startSentence && sentenceInlines.length > 0) {
       const firstInline = sentenceInlines[0];
+      const leadingSpaceOffset =
+        typeof firstInline.startOffset === 'number' &&
+        firstInline.startOffset > 0 &&
+        /\s/.test(block.text[firstInline.startOffset - 1] ?? '')
+          ? firstInline.startOffset - 1
+          : undefined;
       sentenceInlines[0] = {
         ...firstInline,
-        text: /^\s/.test(firstInline.text) ? firstInline.text : ` ${firstInline.text}`
+        text: /^\s/.test(firstInline.text) ? firstInline.text : ` ${firstInline.text}`,
+        startOffset: firstInline.startOffset,
+        endOffset: firstInline.endOffset
       };
+      (sentenceInlines[0] as BookInline & { leadingSpaceOffset?: number }).leadingSpaceOffset =
+        leadingSpaceOffset;
     }
 
     sentenceInlines.forEach((inline) => {
@@ -109,7 +122,10 @@ export function buildRichSlice(
         text: inline.text,
         font: getInlineFont(settings, inline.marks, block.kind),
         marks: dedupeMarks(inline.marks),
-        href: inline.href
+        href: inline.href,
+        blockStart: inline.startOffset,
+        blockEnd: inline.endOffset,
+        leadingSpaceOffset: (inline as BookInline & { leadingSpaceOffset?: number }).leadingSpaceOffset
       });
     });
   }
@@ -132,6 +148,7 @@ export function restoreCollapsedSpacesForRender(
   slice: RichSlice
 ): RenderLine[] {
   const renderedLines: RenderLine[] = [];
+  const itemTextOffsets = new Map<number, number>();
 
   lines.forEach((line, lineIndex) => {
     const fragments: RenderFragment[] = [];
@@ -140,6 +157,12 @@ export function restoreCollapsedSpacesForRender(
       const meta = slice.meta[fragment.itemIndex];
       const item = slice.items[fragment.itemIndex];
       let text = fragment.text;
+      const localCursor = itemTextOffsets.get(fragment.itemIndex) ?? 0;
+      let blockStart =
+        typeof meta?.blockStart === 'number' ? meta.blockStart + localCursor : undefined;
+      let blockEnd =
+        typeof blockStart === 'number' ? blockStart + fragment.text.length : undefined;
+      itemTextOffsets.set(fragment.itemIndex, localCursor + fragment.text.length);
 
       if (
         fragmentStartsItemBoundary(fragment) &&
@@ -148,11 +171,20 @@ export function restoreCollapsedSpacesForRender(
         const previousFragmentInLine = fragments[fragments.length - 1];
         if (previousFragmentInLine) {
           text = ` ${text}`;
+          if (typeof meta?.leadingSpaceOffset === 'number') {
+            blockStart = meta.leadingSpaceOffset;
+          }
         } else {
           const previousLine = renderedLines[lineIndex - 1];
           const previousLineFragment = previousLine?.fragments[previousLine.fragments.length - 1];
           if (previousLineFragment && !/\s$/.test(previousLineFragment.text)) {
             previousLineFragment.text = `${previousLineFragment.text} `;
+            if (typeof meta?.leadingSpaceOffset === 'number') {
+              previousLineFragment.blockEnd = meta.leadingSpaceOffset + 1;
+              blockStart = meta.leadingSpaceOffset + 1;
+              blockEnd =
+                typeof blockStart === 'number' ? blockStart + fragment.text.length : undefined;
+            }
           }
         }
       }
@@ -162,7 +194,9 @@ export function restoreCollapsedSpacesForRender(
         text,
         font: meta?.font ?? item?.font ?? '',
         marks: meta?.marks ?? [],
-        href: meta?.href
+        href: meta?.href,
+        blockStart,
+        blockEnd
       });
     });
 
@@ -243,6 +277,7 @@ export function renderTextSlice(
     type: 'text',
     key: `${block.id}:${startSentence}-${endSentence}`,
     blockId: block.id,
+    blockOrder: block.order,
     kind: block.kind,
     lines,
     startSentence,

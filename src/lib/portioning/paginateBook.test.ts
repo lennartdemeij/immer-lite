@@ -33,6 +33,7 @@ vi.mock('./pretextLayout', () => ({
       type: 'text' as const,
       key: `${block.id}:${startSentence}-${endSentence}`,
       blockId: block.id,
+      blockOrder: block.order,
       kind: block.kind,
       lines: Array.from({ length: endSentence - startSentence }, (_, index) => ({
         key: `line-${index}`,

@@ -27,6 +27,8 @@ export interface RenderFragment {
   font: string;
   marks: string[];
   href?: string;
+  blockStart?: number;
+  blockEnd?: number;
 }
 
 export interface RenderLine {
@@ -38,6 +40,7 @@ export interface PortionTextSlice {
   type: 'text';
   key: string;
   blockId: string;
+  blockOrder: number;
   kind: Extract<BookBlock['kind'], 'heading' | 'paragraph' | 'quote' | 'list-item'>;
   lines: RenderLine[];
   startSentence: number;
@@ -76,4 +79,18 @@ export interface ReaderPortion {
 
 export interface PaginationResult {
   portions: ReaderPortion[];
+}
+
+export interface TextAnnotation {
+  id: string;
+  fingerprint: string;
+  blockId: string;
+  blockOrder: number;
+  startOffset: number;
+  endOffset: number;
+  sentenceIndex: number;
+  selectedText: string;
+  note: string;
+  createdAt: string;
+  updatedAt: string;
 }

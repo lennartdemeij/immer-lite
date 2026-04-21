@@ -7,6 +7,8 @@ export interface BookInline {
   text: string;
   marks: InlineMark[];
   href?: string;
+  startOffset?: number;
+  endOffset?: number;
 }
 
 export interface SentenceUnit {

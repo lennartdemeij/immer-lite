@@ -8,7 +8,16 @@ import {
 } from 'react';
 import { loadEpubBook, revokeBookResources } from '../lib/epub/loadEpub';
 import { paginateBook } from '../lib/portioning/paginateBook';
-import { loadSettings, loadStoredPosition, saveSettings, saveStoredPosition, DEFAULT_SETTINGS } from '../lib/persistence/storage';
+import {
+  deleteAnnotation,
+  loadAnnotations,
+  loadSettings,
+  loadStoredPosition,
+  saveAnnotation,
+  saveSettings,
+  saveStoredPosition,
+  DEFAULT_SETTINGS
+} from '../lib/persistence/storage';
 import {
   clampAnchorToBook,
   getInitialAnchor,
@@ -16,7 +25,7 @@ import {
   preserveAnchorAfterRepagination
 } from '../lib/reader/anchors';
 import type { CanonicalBook } from '../types/book';
-import type { PaginationResult, ReaderAnchor, ReaderSettings } from '../types/reader';
+import type { PaginationResult, ReaderAnchor, ReaderSettings, TextAnnotation } from '../types/reader';
 import { UploadScreen } from './components/UploadScreen';
 import { ReaderScreen } from './components/ReaderScreen';
 import { useReaderViewport } from './hooks/useReaderViewport';
@@ -89,6 +98,7 @@ export function App() {
   const [repaginating, setRepaginating] = useState(false);
   const [pagination, setPagination] = useState<PaginationResult>({ portions: [] });
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [annotations, setAnnotations] = useState<TextAnnotation[]>([]);
   const anchorRef = useRef<ReaderAnchor | null>(null);
   const previousBookRef = useRef<CanonicalBook | null>(null);
   const defaultLoadAttemptedRef = useRef(false);
@@ -206,6 +216,7 @@ export function App() {
       anchorRef.current = stored?.anchor ?? getPreferredStartAnchor(loaded);
       setCurrentIndex(0);
       setPagination({ portions: [] });
+      setAnnotations(loadAnnotations(loaded.fingerprint));
       setBook(loaded);
     } catch (loadError) {
       setError(
@@ -263,6 +274,15 @@ export function App() {
     void loadDefaultBook();
   }, [book]);
 
+  useEffect(() => {
+    if (!book) {
+      setAnnotations([]);
+      return;
+    }
+
+    setAnnotations(loadAnnotations(book.fingerprint));
+  }, [book?.fingerprint]);
+
   const portionCount = pagination.portions.length;
   const appBusy = uploading || repaginating;
   const progressMeta = useMemo(() => {
@@ -304,6 +324,16 @@ export function App() {
                 Math.max(0, Math.min(pagination.portions.length - 1, index))
               )
             }
+            annotations={annotations}
+            onSaveAnnotation={(annotation) => {
+              setAnnotations(saveAnnotation(annotation));
+            }}
+            onDeleteAnnotation={(annotationId) => {
+              if (!book) {
+                return;
+              }
+              setAnnotations(deleteAnnotation(annotationId, book.fingerprint));
+            }}
             containerRef={containerRef}
           />
           {error ? <div className="floating-error">{error}</div> : null}

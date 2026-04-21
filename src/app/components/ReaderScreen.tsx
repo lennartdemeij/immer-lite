@@ -1,10 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import type { CanonicalBook } from '../../types/book';
-import type { PortionBlock, ReaderPortion, ReaderSettings, ViewportMetrics } from '../../types/reader';
+import type {
+  PortionBlock,
+  ReaderPortion,
+  ReaderSettings,
+  TextAnnotation,
+  ViewportMetrics
+} from '../../types/reader';
 import { PortionView } from './PortionView';
 import { SettingsPanel } from './SettingsPanel';
 import { READER_CHROME } from '../hooks/useReaderViewport';
+import { findPortionIndexForAnchor } from '../../lib/portioning/paginateBook';
 
 interface ReaderScreenProps {
   book: CanonicalBook;
@@ -21,6 +28,9 @@ interface ReaderScreenProps {
   onPrevious: () => void;
   onNext: () => void;
   onJumpToPortion: (index: number) => void;
+  annotations: TextAnnotation[];
+  onSaveAnnotation: (annotation: TextAnnotation) => void;
+  onDeleteAnnotation: (annotationId: string) => void;
   containerRef: React.Ref<HTMLDivElement>;
 }
 
@@ -45,15 +55,51 @@ interface PaneLayout {
   forwardSnapOffset: number;
 }
 
+interface SelectionDraft {
+  blockId: string;
+  blockOrder: number;
+  startOffset: number;
+  endOffset: number;
+  sentenceIndex: number;
+  selectedText: string;
+}
+
 const TAP_TOLERANCE = 10;
 const SNAP_THRESHOLD_RATIO = 0.18;
 const SNAP_THRESHOLD_PX = 84;
 const SNAP_ANIMATION_MS = 240;
 const CHAPTER_TRACK_PADDING_PX = 6;
 const CHAPTER_TRACK_GAP_PX = 6;
+const LONG_PRESS_MS = 320;
+const SELECTION_SETTLE_MS = 260;
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
+}
+
+function makeAnnotationId(): string {
+  if (typeof globalThis.crypto?.randomUUID === 'function') {
+    return globalThis.crypto.randomUUID();
+  }
+
+  return `annotation-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function BookmarkIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      className="annotation-save-icon"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.9"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M7 4.5h10A1.5 1.5 0 0 1 18.5 6v13l-6.5-4-6.5 4V6A1.5 1.5 0 0 1 7 4.5Z" />
+    </svg>
+  );
 }
 
 function isTextBlock(block: PortionBlock): block is Extract<PortionBlock, { type: 'text' }> {
@@ -187,6 +233,9 @@ export function ReaderScreen({
   onPrevious,
   onNext,
   onJumpToPortion,
+  annotations,
+  onSaveAnnotation,
+  onDeleteAnnotation,
   containerRef
 }: ReaderScreenProps) {
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -195,12 +244,21 @@ export function ReaderScreen({
   const [snapDirection, setSnapDirection] = useState<SnapDirection | null>(null);
   const [transitionEnabled, setTransitionEnabled] = useState(false);
   const [progressTrackHeight, setProgressTrackHeight] = useState(0);
+  const [selectionEnabled, setSelectionEnabled] = useState(false);
+  const [selectionDraft, setSelectionDraft] = useState<SelectionDraft | null>(null);
+  const [annotationNote, setAnnotationNote] = useState('');
+  const [activeAnnotation, setActiveAnnotation] = useState<TextAnnotation | null>(null);
   const [sheetHeights, setSheetHeights] = useState({
     previous: 0,
     current: 0,
     next: 0
   });
   const pointerState = useRef<PointerState | null>(null);
+  const longPressTimeoutRef = useRef<number | null>(null);
+  const longPressEligibleRef = useRef(false);
+  const longPressTriggeredRef = useRef(false);
+  const stageElementRef = useRef<HTMLElement | null>(null);
+  const selectionFinalizeTimeoutRef = useRef<number | null>(null);
   const progressPointerIdRef = useRef<number | null>(null);
   const snapTimeoutRef = useRef<number | null>(null);
   const dragAnimationFrameRef = useRef<number | null>(null);
@@ -215,12 +273,121 @@ export function ReaderScreen({
   const progressTrackRef = useRef<HTMLDivElement | null>(null);
   const settingsPanelRef = useRef<HTMLElement>(null);
   const settingsButtonRef = useRef<HTMLButtonElement | null>(null);
+  const annotationSheetRef = useRef<HTMLDivElement | null>(null);
 
   function clearSnapTimeout() {
     if (snapTimeoutRef.current !== null) {
       window.clearTimeout(snapTimeoutRef.current);
       snapTimeoutRef.current = null;
     }
+  }
+
+  function clearLongPressTimeout() {
+    if (longPressTimeoutRef.current !== null) {
+      window.clearTimeout(longPressTimeoutRef.current);
+      longPressTimeoutRef.current = null;
+    }
+  }
+
+  function clearSelectionFinalizeTimeout() {
+    if (selectionFinalizeTimeoutRef.current !== null) {
+      window.clearTimeout(selectionFinalizeTimeoutRef.current);
+      selectionFinalizeTimeoutRef.current = null;
+    }
+  }
+
+  function clearDomSelection() {
+    window.getSelection()?.removeAllRanges();
+  }
+
+  function readSelectionDraftFromDom(): SelectionDraft | null {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+      return null;
+    }
+
+    const range = selection.getRangeAt(0);
+    const currentPane = currentPaneRef.current;
+    if (!currentPane) {
+      return null;
+    }
+
+    const commonAncestor =
+      range.commonAncestorContainer.nodeType === Node.ELEMENT_NODE
+        ? (range.commonAncestorContainer as Element)
+        : range.commonAncestorContainer.parentElement;
+    const blockElement = commonAncestor?.closest<HTMLElement>('.reader-block[data-block-id]');
+    if (!blockElement || !currentPane.contains(blockElement)) {
+      return null;
+    }
+
+    const startElement =
+      range.startContainer.nodeType === Node.ELEMENT_NODE
+        ? (range.startContainer as Element)
+        : range.startContainer.parentElement;
+    const endElement =
+      range.endContainer.nodeType === Node.ELEMENT_NODE
+        ? (range.endContainer as Element)
+        : range.endContainer.parentElement;
+    const startFragment = startElement?.closest<HTMLElement>('[data-block-start][data-block-end]');
+    const endFragment = endElement?.closest<HTMLElement>('[data-block-start][data-block-end]');
+    if (!startFragment || !endFragment) {
+      return null;
+    }
+
+    const startBase = Number(startFragment.dataset.blockStart);
+    const endBase = Number(endFragment.dataset.blockStart);
+    if (!Number.isFinite(startBase) || !Number.isFinite(endBase)) {
+      return null;
+    }
+
+    const startOffset = clamp(
+      startBase + range.startOffset,
+      Number(startFragment.dataset.blockStart),
+      Number(startFragment.dataset.blockEnd)
+    );
+    const endOffset = clamp(
+      endBase + range.endOffset,
+      Number(endFragment.dataset.blockStart),
+      Number(endFragment.dataset.blockEnd)
+    );
+
+    const normalizedStart = Math.min(startOffset, endOffset);
+    const normalizedEnd = Math.max(startOffset, endOffset);
+    const selectedText = selection.toString().trim();
+    if (!selectedText || normalizedEnd <= normalizedStart) {
+      return null;
+    }
+
+    let sentenceIndex = Number(blockElement.dataset.startSentence ?? 0);
+    const matchedBlock = book.sections
+      .flatMap((section) => section.blocks)
+      .find(
+        (block): block is Extract<typeof block, { kind: 'heading' | 'paragraph' | 'quote' | 'list-item' }> =>
+          (block.kind === 'heading' ||
+            block.kind === 'paragraph' ||
+            block.kind === 'quote' ||
+            block.kind === 'list-item') &&
+          block.id === blockElement.dataset.blockId
+      );
+    if (matchedBlock) {
+      for (const sentence of matchedBlock.sentences) {
+        if (sentence.startOffset <= normalizedStart) {
+          sentenceIndex = sentence.index;
+        } else {
+          break;
+        }
+      }
+    }
+
+    return {
+      blockId: blockElement.dataset.blockId ?? '',
+      blockOrder: Number(blockElement.dataset.blockOrder ?? 0),
+      startOffset: normalizedStart,
+      endOffset: normalizedEnd,
+      sentenceIndex,
+      selectedText
+    };
   }
 
   function flushDragOffset(nextOffset: number) {
@@ -321,6 +488,8 @@ export function ReaderScreen({
     return () => {
       clearSnapTimeout();
       clearDragAnimationFrame();
+      clearLongPressTimeout();
+      clearSelectionFinalizeTimeout();
     };
   }, []);
 
@@ -353,6 +522,34 @@ export function ReaderScreen({
   }, [settingsOpen]);
 
   useEffect(() => {
+    if (!selectionDraft) {
+      return;
+    }
+
+    const handleDocumentClick = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (!target) {
+        return;
+      }
+
+      if (annotationSheetRef.current?.contains(target)) {
+        return;
+      }
+
+      setAnnotationNote('');
+      setSelectionDraft(null);
+      setSelectionEnabled(false);
+      clearSelectionFinalizeTimeout();
+      clearDomSelection();
+    };
+
+    document.addEventListener('click', handleDocumentClick, true);
+    return () => {
+      document.removeEventListener('click', handleDocumentClick, true);
+    };
+  }, [selectionDraft]);
+
+  useEffect(() => {
     if (!portion) {
       return;
     }
@@ -362,7 +559,77 @@ export function ReaderScreen({
     setIsDragging(false);
     isDraggingRef.current = false;
     setSnapDirection(null);
+    setSelectionEnabled(false);
+    setSelectionDraft(null);
+    setAnnotationNote('');
+    clearSelectionFinalizeTimeout();
+    clearDomSelection();
   }, [portion?.id]);
+
+  useEffect(() => {
+    if (!selectionEnabled) {
+      return;
+    }
+
+    const finalizeSelection = () => {
+      const activeElement = document.activeElement as HTMLElement | null;
+      if (activeElement && annotationSheetRef.current?.contains(activeElement)) {
+        return;
+      }
+
+      clearSelectionFinalizeTimeout();
+      selectionFinalizeTimeoutRef.current = window.setTimeout(() => {
+        const nextDraft = readSelectionDraftFromDom();
+        if (!nextDraft) {
+          clearSelectionFinalizeTimeout();
+          return;
+        }
+
+        setSelectionDraft(nextDraft);
+        clearSelectionFinalizeTimeout();
+      }, SELECTION_SETTLE_MS);
+    };
+
+    document.addEventListener('pointerup', finalizeSelection, true);
+    document.addEventListener('touchend', finalizeSelection, true);
+
+    return () => {
+      document.removeEventListener('pointerup', finalizeSelection, true);
+      document.removeEventListener('touchend', finalizeSelection, true);
+    };
+  }, [readSelectionDraftFromDom, selectionEnabled]);
+
+  useEffect(() => {
+    if (!selectionEnabled || !selectionDraft) {
+      return;
+    }
+
+    const syncSelectionDraft = () => {
+      const nextDraft = readSelectionDraftFromDom();
+      if (!nextDraft) {
+        return;
+      }
+
+      setSelectionDraft((current) => {
+        if (
+          current &&
+          current.blockId === nextDraft.blockId &&
+          current.blockOrder === nextDraft.blockOrder &&
+          current.startOffset === nextDraft.startOffset &&
+          current.endOffset === nextDraft.endOffset &&
+          current.sentenceIndex === nextDraft.sentenceIndex &&
+          current.selectedText === nextDraft.selectedText
+        ) {
+          return current;
+        }
+
+        return nextDraft;
+      });
+    };
+
+    document.addEventListener('selectionchange', syncSelectionDraft);
+    return () => document.removeEventListener('selectionchange', syncSelectionDraft);
+  }, [readSelectionDraftFromDom, selectionDraft, selectionEnabled]);
 
   useEffect(() => {
     const measure = () => {
@@ -574,6 +841,28 @@ export function ReaderScreen({
     stageHeight
   ]);
   const focusedSectionId = portions[focusedPortionIndex]?.sectionId ?? portion?.sectionId ?? null;
+  const annotationsByBlock = useMemo(() => {
+    const next = new Map<string, TextAnnotation[]>();
+    annotations.forEach((annotation) => {
+      const entries = next.get(annotation.blockId) ?? [];
+      entries.push(annotation);
+      next.set(annotation.blockId, entries);
+    });
+    return next;
+  }, [annotations]);
+  const annotationPortionIndexes = useMemo(() => {
+    const next = new Set<number>();
+    annotations.forEach((annotation) => {
+      const index = findPortionIndexForAnchor(portions, {
+        blockId: annotation.blockId,
+        blockOrder: annotation.blockOrder,
+        sentenceIndex: annotation.sentenceIndex,
+        lineOffset: 0
+      });
+      next.add(index);
+    });
+    return next;
+  }, [annotations, portions]);
   const focusedSegmentMetric = useMemo(
     () =>
       chapterTrackMetrics.find((segment) => segment.sectionId === focusedSectionId) ?? null,
@@ -814,13 +1103,49 @@ export function ReaderScreen({
     onJumpToPortion(nextIndex);
   }
 
+  function handleSaveAnnotation() {
+    if (!selectionDraft || !annotationNote.trim()) {
+      return;
+    }
+
+    onSaveAnnotation({
+      id: makeAnnotationId(),
+      fingerprint: book.fingerprint,
+      blockId: selectionDraft.blockId,
+      blockOrder: selectionDraft.blockOrder,
+      startOffset: selectionDraft.startOffset,
+      endOffset: selectionDraft.endOffset,
+      sentenceIndex: selectionDraft.sentenceIndex,
+      selectedText: selectionDraft.selectedText,
+      note: annotationNote.trim(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    });
+    setAnnotationNote('');
+    setSelectionDraft(null);
+    setSelectionEnabled(false);
+    clearSelectionFinalizeTimeout();
+    clearDomSelection();
+  }
+
+  function handleAnnotationPress(annotation: TextAnnotation) {
+    setActiveAnnotation(annotation);
+    setSelectionDraft(null);
+    setSelectionEnabled(false);
+    clearSelectionFinalizeTimeout();
+    clearDomSelection();
+  }
+
   function handlePointerDown(event: React.PointerEvent<HTMLElement>) {
-    if (snapDirection) {
+    if (snapDirection || selectionEnabled) {
       return;
     }
 
     const interactiveTarget = (event.target as HTMLElement | null)?.closest(
-      'a, button, input, label, select, textarea'
+      'a, button, input, label, select, textarea, [data-reader-interactive="true"]'
+    );
+    const withinCurrentText = Boolean(
+      (event.target as HTMLElement | null)?.closest('.portion-pane-current .reader-lines')
     );
 
     pointerState.current = {
@@ -830,15 +1155,32 @@ export function ReaderScreen({
       moved: false,
       startedOnInteractive: Boolean(interactiveTarget)
     };
+    stageElementRef.current = event.currentTarget;
+    longPressTriggeredRef.current = false;
+    longPressEligibleRef.current = withinCurrentText && !interactiveTarget;
+    clearLongPressTimeout();
+    if (longPressEligibleRef.current) {
+      longPressTimeoutRef.current = window.setTimeout(() => {
+        if (!pointerState.current || pointerState.current.pointerId !== event.pointerId) {
+          return;
+        }
+        longPressTriggeredRef.current = true;
+        setSelectionEnabled(true);
+        setIsDragging(false);
+        isDraggingRef.current = false;
+        if (stageElementRef.current?.hasPointerCapture(event.pointerId)) {
+          stageElementRef.current.releasePointerCapture(event.pointerId);
+        }
+      }, LONG_PRESS_MS);
+    }
 
     setTransitionEnabled(false);
     setIsDragging(false);
-    event.currentTarget.setPointerCapture(event.pointerId);
   }
 
   function handlePointerMove(event: React.PointerEvent<HTMLElement>) {
     const state = pointerState.current;
-    if (!state || state.pointerId !== event.pointerId || snapDirection) {
+    if (!state || state.pointerId !== event.pointerId || snapDirection || longPressTriggeredRef.current) {
       return;
     }
 
@@ -855,6 +1197,11 @@ export function ReaderScreen({
 
     if (Math.abs(deltaY) < Math.abs(deltaX)) {
       return;
+    }
+
+    clearLongPressTimeout();
+    if (!event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.setPointerCapture(event.pointerId);
     }
 
     const limitedOffset =
@@ -878,7 +1225,12 @@ export function ReaderScreen({
       return;
     }
 
+    clearLongPressTimeout();
     pointerState.current = null;
+    if (longPressTriggeredRef.current) {
+      longPressTriggeredRef.current = false;
+      return;
+    }
     const deltaY = event.clientY - state.y;
     const deltaX = event.clientX - state.x;
     const movedEnoughForTapCancel =
@@ -1002,6 +1354,27 @@ export function ReaderScreen({
           onPointerUp={handleProgressPointerEnd}
           onPointerCancel={handleProgressPointerEnd}
         >
+          {Array.from(annotationPortionIndexes).map((index) => {
+            const segment = chapterTrackMetrics.find(
+              (entry) => index >= entry.start && index <= entry.end
+            );
+            if (!segment) {
+              return null;
+            }
+
+            const localRatio =
+              segment.portionCount <= 0
+                ? 0.5
+                : (index - segment.start + 0.5) / segment.portionCount;
+            return (
+              <div
+                key={`annotation-marker-${index}`}
+                className="chapter-progress-annotation"
+                style={{ top: `${segment.topPx + segment.heightPx * localRatio}px` }}
+                aria-hidden="true"
+              />
+            );
+          })}
           {chapterSegments.map((segment) => {
             const isActive =
               focusedSectionId != null &&
@@ -1043,7 +1416,8 @@ export function ReaderScreen({
         } ${transitionEnabled ? 'transitioning' : ''}`}
         style={{
           '--portion-width': viewport ? `${viewport.contentWidth}px` : '100%',
-          '--portion-edge-padding': `${READER_CHROME.portionEdgePadding}px`
+          '--portion-edge-padding': `${READER_CHROME.portionEdgePadding}px`,
+          touchAction: selectionEnabled ? 'auto' : 'none'
         } as CSSProperties}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
@@ -1083,18 +1457,31 @@ export function ReaderScreen({
               opacity: getPaneOpacity('previous')
             }}
           >
-            {previousPortion ? <PortionView portion={previousPortion} settings={settings} /> : null}
+            {previousPortion ? (
+              <PortionView
+                portion={previousPortion}
+                settings={settings}
+                annotationsByBlock={annotationsByBlock}
+              />
+            ) : null}
           </div>
           <div
             ref={currentPaneRef}
-            className="portion-pane portion-pane-current"
+            className={`portion-pane portion-pane-current${selectionEnabled ? ' selection-enabled' : ''}`}
             style={{
               height: portion ? `${paneLayout.currentHeight}px` : '0px',
               transform: `translateY(${paneLayout.currentTop + dragOffset}px)`,
               opacity: portion ? getPaneOpacity('current') : 0
             }}
           >
-            {portion ? <PortionView portion={portion} settings={settings} /> : null}
+            {portion ? (
+              <PortionView
+                portion={portion}
+                settings={settings}
+                annotationsByBlock={annotationsByBlock}
+                onAnnotationPress={handleAnnotationPress}
+              />
+            ) : null}
           </div>
           <div
             ref={nextPaneRef}
@@ -1106,10 +1493,80 @@ export function ReaderScreen({
               opacity: getPaneOpacity('next')
             }}
           >
-            {nextPortion ? <PortionView portion={nextPortion} settings={settings} /> : null}
+            {nextPortion ? (
+              <PortionView
+                portion={nextPortion}
+                settings={settings}
+                annotationsByBlock={annotationsByBlock}
+              />
+            ) : null}
           </div>
         </div>
       </main>
+
+      {selectionDraft ? (
+        <div
+          ref={annotationSheetRef}
+          className="annotation-sheet"
+          role="dialog"
+          aria-label="Add annotation"
+        >
+          <div className="annotation-sheet-inner">
+            <div className="annotation-compose-row">
+              <textarea
+                value={annotationNote}
+                onChange={(event) => setAnnotationNote(event.target.value)}
+                className="annotation-textarea"
+                placeholder="Write a note..."
+                rows={2}
+                autoCapitalize="sentences"
+                autoCorrect="on"
+                spellCheck
+              />
+              <button
+                type="button"
+                className="annotation-save-button"
+                aria-label="Save note"
+                onClick={handleSaveAnnotation}
+              >
+                <BookmarkIcon />
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {activeAnnotation ? (
+        <button
+          type="button"
+          className="annotation-sheet-backdrop"
+          aria-label="Close annotation"
+          onClick={() => setActiveAnnotation(null)}
+        />
+      ) : null}
+
+      {activeAnnotation ? (
+        <div className="annotation-sheet annotation-sheet-viewer" role="dialog" aria-label="Annotation">
+          <div className="annotation-sheet-inner">
+            <p className="annotation-selection-preview">{activeAnnotation.selectedText}</p>
+            <p className="annotation-note-copy">{activeAnnotation.note}</p>
+            <div className="annotation-actions">
+              <button type="button" onClick={() => setActiveAnnotation(null)}>
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onDeleteAnnotation(activeAnnotation.id);
+                  setActiveAnnotation(null);
+                }}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <SettingsPanel
         panelRef={settingsPanelRef}

@@ -177,6 +177,7 @@ function renderOversizedSentence(
       type: 'text',
       key: `${block.id}:${sentenceIndex}:line:${lineOffset}`,
       blockId: block.id,
+      blockOrder: block.order,
       kind: block.kind,
       lines: window.visibleLines,
       startSentence: sentenceIndex,
