@@ -481,11 +481,11 @@ button {
 }
 
 .reader-stage.transitioning .continuation-bridge-shell {
-  transition: transform 240ms ease-out, opacity 180ms ease-out;
+  transition: transform 240ms ease-out, opacity 0ms ease-out;
 }
 
 .continuation-bridge-shell.fade-in {
-  animation: continuation-bridge-fade-in 240ms ease-out both;
+  animation: continuation-bridge-fade-in 0ms ease-out both;
 }
 
 @keyframes continuation-bridge-fade-in {

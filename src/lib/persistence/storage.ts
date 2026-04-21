@@ -76,20 +76,24 @@ function saveAllAnnotations(annotations: TextAnnotation[]): void {
   window.localStorage.setItem(ANNOTATIONS_KEY, JSON.stringify(annotations));
 }
 
+function sortBookAnnotations(annotations: TextAnnotation[]): TextAnnotation[] {
+  return [...annotations].sort((left, right) => {
+    if (left.blockOrder !== right.blockOrder) {
+      return left.blockOrder - right.blockOrder;
+    }
+
+    if (left.startOffset !== right.startOffset) {
+      return left.startOffset - right.startOffset;
+    }
+
+    return left.endOffset - right.endOffset;
+  });
+}
+
 export function loadAnnotations(fingerprint: string): TextAnnotation[] {
-  return loadAllAnnotations()
-    .filter((annotation) => annotation.fingerprint === fingerprint)
-    .sort((left, right) => {
-      if (left.blockOrder !== right.blockOrder) {
-        return left.blockOrder - right.blockOrder;
-      }
-
-      if (left.startOffset !== right.startOffset) {
-        return left.startOffset - right.startOffset;
-      }
-
-      return left.endOffset - right.endOffset;
-    });
+  return sortBookAnnotations(
+    loadAllAnnotations().filter((annotation) => annotation.fingerprint === fingerprint)
+  );
 }
 
 export function saveAnnotation(annotation: TextAnnotation): TextAnnotation[] {
@@ -106,4 +110,13 @@ export function deleteAnnotation(annotationId: string, fingerprint: string): Tex
   const annotations = loadAllAnnotations().filter((entry) => entry.id !== annotationId);
   saveAllAnnotations(annotations);
   return loadAnnotations(fingerprint);
+}
+
+export function replaceAllAnnotations(annotations: TextAnnotation[], fingerprint: string): TextAnnotation[] {
+  saveAllAnnotations(annotations);
+  return loadAnnotations(fingerprint);
+}
+
+export function getAllAnnotations(): TextAnnotation[] {
+  return loadAllAnnotations();
 }

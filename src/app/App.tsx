@@ -10,14 +10,21 @@ import { loadEpubBook, revokeBookResources } from '../lib/epub/loadEpub';
 import { paginateBook } from '../lib/portioning/paginateBook';
 import {
   deleteAnnotation,
+  getAllAnnotations,
   loadAnnotations,
   loadSettings,
   loadStoredPosition,
+  replaceAllAnnotations,
   saveAnnotation,
   saveSettings,
   saveStoredPosition,
   DEFAULT_SETTINGS
 } from '../lib/persistence/storage';
+import {
+  fetchRemoteAnnotations,
+  mergeAnnotations,
+  pushRemoteAnnotations
+} from '../lib/persistence/annotationSync';
 import {
   clampAnchorToBook,
   getInitialAnchor,
@@ -103,6 +110,7 @@ export function App() {
   const previousBookRef = useRef<CanonicalBook | null>(null);
   const defaultLoadAttemptedRef = useRef(false);
   const fullscreenBoundRef = useRef(false);
+  const annotationSyncVersionRef = useRef(0);
 
   const { containerRef, viewport } = useReaderViewport(settings.horizontalPadding);
   const currentPortion = pagination.portions[currentIndex] ?? null;
@@ -280,8 +288,58 @@ export function App() {
       return;
     }
 
-    setAnnotations(loadAnnotations(book.fingerprint));
+    const syncVersion = annotationSyncVersionRef.current + 1;
+    annotationSyncVersionRef.current = syncVersion;
+    const localAnnotations = loadAnnotations(book.fingerprint);
+    setAnnotations(localAnnotations);
+
+    const syncAnnotations = async () => {
+      try {
+        const remoteAnnotations = await fetchRemoteAnnotations();
+        if (annotationSyncVersionRef.current !== syncVersion) {
+          return;
+        }
+
+        const merged = mergeAnnotations(getAllAnnotations(), remoteAnnotations);
+        setAnnotations(replaceAllAnnotations(merged, book.fingerprint));
+      } catch (syncError) {
+        console.warn('Annotation sync failed; using local annotations only.', syncError);
+      }
+    };
+
+    void syncAnnotations();
   }, [book?.fingerprint]);
+
+  async function saveAnnotationOnline(annotation: TextAnnotation) {
+    const nextLocalAnnotations = saveAnnotation(annotation);
+    setAnnotations(nextLocalAnnotations);
+
+    try {
+      const remoteAnnotations = await fetchRemoteAnnotations();
+      const merged = mergeAnnotations(getAllAnnotations(), remoteAnnotations);
+      const withAnnotation = mergeAnnotations(merged, [annotation]);
+      const pushed = await pushRemoteAnnotations(withAnnotation);
+      setAnnotations(replaceAllAnnotations(pushed, annotation.fingerprint));
+    } catch (syncError) {
+      console.warn('Annotation save sync failed; saved locally only.', syncError);
+    }
+  }
+
+  async function deleteAnnotationOnline(annotationId: string, fingerprint: string) {
+    const nextLocalAnnotations = deleteAnnotation(annotationId, fingerprint);
+    setAnnotations(nextLocalAnnotations);
+
+    try {
+      const remoteAnnotations = await fetchRemoteAnnotations();
+      const nextRemoteAnnotations = mergeAnnotations(getAllAnnotations(), remoteAnnotations).filter(
+        (annotation) => annotation.id !== annotationId
+      );
+      const pushed = await pushRemoteAnnotations(nextRemoteAnnotations);
+      setAnnotations(replaceAllAnnotations(pushed, fingerprint));
+    } catch (syncError) {
+      console.warn('Annotation delete sync failed; deleted locally only.', syncError);
+    }
+  }
 
   const portionCount = pagination.portions.length;
   const appBusy = uploading || repaginating;
@@ -326,13 +384,13 @@ export function App() {
             }
             annotations={annotations}
             onSaveAnnotation={(annotation) => {
-              setAnnotations(saveAnnotation(annotation));
+              void saveAnnotationOnline(annotation);
             }}
             onDeleteAnnotation={(annotationId) => {
               if (!book) {
                 return;
               }
-              setAnnotations(deleteAnnotation(annotationId, book.fingerprint));
+              void deleteAnnotationOnline(annotationId, book.fingerprint);
             }}
             containerRef={containerRef}
           />

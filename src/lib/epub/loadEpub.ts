@@ -525,8 +525,15 @@ async function loadResourceUrls(
   return resources;
 }
 
-function makeFingerprint(file: File): string {
-  return `${file.name}:${file.size}:${file.lastModified}`;
+async function makeFingerprint(file: File, fileBuffer: ArrayBuffer): Promise<string> {
+  if (globalThis.crypto?.subtle) {
+    const digest = await globalThis.crypto.subtle.digest('SHA-256', fileBuffer);
+    const bytes = Array.from(new Uint8Array(digest));
+    const hash = bytes.map((byte) => byte.toString(16).padStart(2, '0')).join('');
+    return `sha256:${hash}`;
+  }
+
+  return `file:${file.name}:${file.size}`;
 }
 
 export async function loadEpubBook(file: File): Promise<CanonicalBook> {
@@ -535,6 +542,7 @@ export async function loadEpubBook(file: File): Promise<CanonicalBook> {
   }
 
   const fileBuffer = await file.arrayBuffer();
+  const fingerprint = await makeFingerprint(file, fileBuffer);
   const zip = await JSZip.loadAsync(fileBuffer);
   const containerEntry = zip.file('META-INF/container.xml');
   if (!containerEntry) {
@@ -619,7 +627,7 @@ export async function loadEpubBook(file: File): Promise<CanonicalBook> {
 
   return {
     id: createBookInstanceId(),
-    fingerprint: makeFingerprint(file),
+    fingerprint,
     metadata,
     sections,
     resources,

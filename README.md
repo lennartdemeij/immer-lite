@@ -24,6 +24,7 @@ No backend is required. The uploaded EPUB never leaves the browser.
 - Stops portions on complete sentence boundaries in the normal flow
 - Falls back to line-window continuation only when a single sentence is too large for one screen
 - Persists reader settings and last reading anchor in `localStorage`
+- Syncs annotations through JSONHosting when browser CORS permits it, with `localStorage` fallback
 - Builds as a static site suitable for GitHub Pages
 
 ## Local development
@@ -213,6 +214,17 @@ The app stores:
 - reader settings
 - last reading anchor per EPUB fingerprint
 - last-opened book metadata needed for position lookup
+- text annotations, including stable book fingerprint, block id/order, sentence index, character offsets, selected text, and note text
+
+Book fingerprints are content-based SHA-256 hashes when `crypto.subtle` is available, so the same EPUB can be recognized across sessions and devices. Annotation anchors are tied to the normalized book structure rather than a portion index, so they survive viewport and settings reflow.
+
+The app also contains a JSONHosting sync adapter:
+
+- reads from `https://jsonhosting.com/api/json/{id}/raw`
+- writes to `https://jsonhosting.com/api/json/{id}` with the document edit key
+- falls back to local annotation storage if the network request fails
+
+JSONHosting currently exposes CORS headers on the raw read endpoint. If browser CORS blocks write requests from GitHub Pages, annotations continue to work locally but remote writes require JSONHosting to allow cross-origin `PUT`/`PATCH` or a tiny proxy endpoint.
 
 The book binary itself is not uploaded or sent anywhere.
 
