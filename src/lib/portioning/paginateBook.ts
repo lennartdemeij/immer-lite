@@ -22,6 +22,7 @@ interface Cursor {
 }
 
 const MIN_VISIBLE_LINES = 2;
+const MIN_NEXT_SENTENCES_AFTER_BREAK = 2;
 
 function getSection(book: CanonicalBook, sectionIndex: number) {
   return book.sections[sectionIndex];
@@ -56,6 +57,24 @@ function nextBlockCursor(book: CanonicalBook, cursor: Cursor): Cursor | null {
     };
   }
 
+  return null;
+}
+
+function getNextTextCursor(book: CanonicalBook, cursor: Cursor): Cursor | null {
+  let nextCursor = nextBlockCursor(book, cursor);
+  while (nextCursor) {
+    const nextBlock = getBlock(book, nextCursor);
+    if (
+      nextBlock &&
+      (nextBlock.kind === 'heading' ||
+        nextBlock.kind === 'paragraph' ||
+        nextBlock.kind === 'quote' ||
+        nextBlock.kind === 'list-item')
+    ) {
+      return nextCursor;
+    }
+    nextCursor = nextBlockCursor(book, nextCursor);
+  }
   return null;
 }
 
@@ -138,6 +157,104 @@ function findMaxSentenceFit(
   }
 
   return best;
+}
+
+function chooseSentenceBreak(
+  block: TextBlock,
+  startSentence: number,
+  maxSentenceExclusive: number
+): number {
+  if (maxSentenceExclusive <= startSentence + 1) {
+    return maxSentenceExclusive;
+  }
+
+  let bestSentence = maxSentenceExclusive;
+  let bestScore = Number.NEGATIVE_INFINITY;
+
+  for (let candidate = startSentence + 1; candidate <= maxSentenceExclusive; candidate += 1) {
+    const remainingSentences = block.sentences.length - candidate;
+    const sentenceText = block.sentences[candidate - 1]?.text.trim() ?? '';
+    let score = candidate - startSentence;
+
+    if (candidate === block.sentences.length) {
+      score += 2.5;
+    }
+
+    if (remainingSentences === 1) {
+      score -= 1.2;
+    } else if (
+      remainingSentences > 1 &&
+      remainingSentences < MIN_NEXT_SENTENCES_AFTER_BREAK
+    ) {
+      score -= 0.5;
+    }
+
+    if (/[.!?]["')\]]*$/.test(sentenceText)) {
+      score += 0.45;
+    }
+    if (/[,:;]["')\]]*$/.test(sentenceText)) {
+      score -= 0.35;
+    }
+    if (block.kind === 'heading' && candidate < block.sentences.length) {
+      score -= 1.5;
+    }
+
+    if (score >= bestScore) {
+      bestScore = score;
+      bestSentence = candidate;
+    }
+  }
+
+  return bestSentence;
+}
+
+function shouldKeepHeadingWithNextBlock(
+  book: CanonicalBook,
+  cursor: Cursor,
+  remainingHeight: number,
+  viewport: ViewportMetrics,
+  settings: ReaderSettings
+): boolean {
+  const block = getBlock(book, cursor);
+  if (!block || block.kind !== 'heading') {
+    return false;
+  }
+
+  const headingMeasurement = measureTextSlice(
+    block,
+    0,
+    block.sentences.length,
+    viewport,
+    settings,
+    false,
+    false
+  );
+
+  const nextTextCursor = getNextTextCursor(book, cursor);
+  if (!nextTextCursor) {
+    return headingMeasurement.height <= remainingHeight;
+  }
+
+  const nextBlock = getBlock(book, nextTextCursor);
+  if (
+    !nextBlock ||
+    !('sentences' in nextBlock) ||
+    nextBlock.sentences.length === 0
+  ) {
+    return headingMeasurement.height <= remainingHeight;
+  }
+
+  const nextMeasurement = measureTextSlice(
+    nextBlock,
+    0,
+    1,
+    viewport,
+    settings,
+    false,
+    nextBlock.sentences.length > 1
+  );
+
+  return headingMeasurement.height + nextMeasurement.height <= remainingHeight;
 }
 
 function renderOversizedSentence(
@@ -235,6 +352,14 @@ export async function paginateBook(
         break;
       }
 
+      if (
+        block.kind === 'heading' &&
+        portionBlocks.length > 0 &&
+        !shouldKeepHeadingWithNextBlock(book, workingCursor, remainingHeight, viewport, settings)
+      ) {
+        break;
+      }
+
       if (block.kind === 'scene-break') {
         const typography = getBlockTypography(block.kind, settings);
         const needed = typography.marginTop + typography.marginBottom + settings.fontSize;
@@ -323,11 +448,16 @@ export async function paginateBook(
       );
 
       if (maxSentence > workingCursor.sentenceIndex) {
-        const continuationEnd = maxSentence < textBlock.sentences.length;
+        const chosenSentence = chooseSentenceBreak(
+          textBlock,
+          workingCursor.sentenceIndex,
+          maxSentence
+        );
+        const continuationEnd = chosenSentence < textBlock.sentences.length;
         const rendered = renderTextSlice(
           textBlock,
           workingCursor.sentenceIndex,
-          maxSentence,
+          chosenSentence,
           viewport,
           settings,
           workingCursor.sentenceIndex > 0,
@@ -336,7 +466,7 @@ export async function paginateBook(
         const measurement = measureTextSlice(
           textBlock,
           workingCursor.sentenceIndex,
-          maxSentence,
+          chosenSentence,
           viewport,
           settings,
           workingCursor.sentenceIndex > 0,
@@ -344,11 +474,11 @@ export async function paginateBook(
         );
         portionBlocks.push(rendered);
         remainingHeight -= measurement.height;
-        lastAnchor = makeAnchor(textBlock, maxSentence - 1, 0);
-        if (maxSentence < textBlock.sentences.length) {
+        lastAnchor = makeAnchor(textBlock, chosenSentence - 1, 0);
+        if (chosenSentence < textBlock.sentences.length) {
           workingCursor = {
             ...workingCursor,
-            sentenceIndex: maxSentence,
+            sentenceIndex: chosenSentence,
             lineOffset: 0
           };
           continue;

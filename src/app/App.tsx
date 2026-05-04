@@ -101,7 +101,7 @@ export function App() {
   );
   const deferredSettings = useDeferredValue(settings);
   const [error, setError] = useState<string | null>(null);
-  const [uploading, setUploading] = useState(false);
+  const [uploading, setUploading] = useState(() => getDefaultBookCandidates().length > 0);
   const [repaginating, setRepaginating] = useState(false);
   const [pagination, setPagination] = useState<PaginationResult>({ portions: [] });
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -398,12 +398,15 @@ export function App() {
           {progressMeta ? <div className="sr-only">{progressMeta}</div> : null}
         </>
       ) : (
-        <div ref={containerRef} className="reader-shell theme-light upload-root">
+        <div
+          ref={containerRef}
+          className={`reader-shell ${appBusy ? `theme-${settings.theme}` : 'theme-light upload-root'}`}
+        >
           <UploadScreen onFileSelected={handleFileSelected} busy={appBusy} error={error} />
         </div>
       )}
 
-      {!book && (
+      {!book && !appBusy && (
         <div className="upload-action-strip">
           <button type="button" onClick={() => setSettings(DEFAULT_SETTINGS)}>
             Reset reader defaults

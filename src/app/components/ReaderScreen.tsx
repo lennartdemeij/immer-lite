@@ -140,6 +140,17 @@ function hasContinuationBridge(from: ReaderPortion | null, to: ReaderPortion | n
   );
 }
 
+function endsWithSceneBreak(portion: ReaderPortion | null): boolean {
+  return portion?.blocks[portion.blocks.length - 1]?.type === 'scene-break';
+}
+
+function hasSceneBreakBoundary(
+  previous: ReaderPortion | null,
+  current: ReaderPortion | null
+): boolean {
+  return Boolean(previous && current && endsWithSceneBreak(previous));
+}
+
 function SettingsIcon() {
   return (
     <svg
@@ -168,14 +179,20 @@ function ContinuationBridge() {
   );
 }
 
+function SceneBreakBridge() {
+  return <div className="scene-break" aria-hidden="true" />;
+}
+
 function ContinuationBridgeShell({
   visible,
   style,
-  transitioning
+  transitioning,
+  children
 }: {
   visible: boolean;
   style: CSSProperties | null;
   transitioning?: boolean;
+  children?: React.ReactNode;
 }) {
   const [fadeIn, setFadeIn] = useState(false);
   const wasVisibleRef = useRef(false);
@@ -213,7 +230,7 @@ function ContinuationBridgeShell({
       }`}
       style={style}
     >
-      <ContinuationBridge />
+      {children ?? <ContinuationBridge />}
     </div>
   );
 }
@@ -886,8 +903,12 @@ export function ReaderScreen({
       return {
         incomingCurrent: null,
         outgoingCurrent: null,
+        incomingSceneBreak: null,
+        outgoingSceneBreak: null,
         activeForwardBridge: null,
-        activeBackwardBridge: null
+        activeBackwardBridge: null,
+        activeForwardSceneBreak: null,
+        activeBackwardSceneBreak: null
       };
     }
 
@@ -949,7 +970,20 @@ export function ReaderScreen({
     const bottomRightStyle = (rect: { right: number; bottom: number } | null): CSSProperties => ({
       transform: `translate(${(rect?.right ?? sheetRight) - bridgeHalfWidth}px, ${(rect?.bottom ?? stageHeight - markerInsetY) - markerInsetY}px) translate(-50%, -50%)`
     });
-
+    const topCenterStyle = (
+      rect: { left: number; right: number; top: number } | null
+    ): CSSProperties => ({
+      transform: `translate(${((rect?.left ?? sheetLeft) + (rect?.right ?? sheetRight)) / 2}px, ${(
+        rect?.top ?? markerInsetY
+      ) + markerInsetY + 12}px) translate(-50%, -50%)`
+    });
+    const bottomCenterStyle = (
+      rect: { left: number; right: number; bottom: number } | null
+    ): CSSProperties => ({
+      transform: `translate(${((rect?.left ?? sheetLeft) + (rect?.right ?? sheetRight)) / 2}px, ${(
+        rect?.bottom ?? stageHeight - markerInsetY
+      ) - markerInsetY - 12}px) translate(-50%, -50%)`
+    });
     const incomingCurrent =
       getFirstTextBlock(portion)?.continuationStart && !(draggingBackward || animatingBackward)
         ? topLeftStyle(currentSheet)
@@ -958,7 +992,15 @@ export function ReaderScreen({
       getLastTextBlock(portion)?.continuationEnd && !(draggingForward || animatingForward)
         ? bottomRightStyle(currentSheet)
         : null;
-
+    const incomingSceneBreak =
+      hasSceneBreakBoundary(previousPortion, portion) &&
+      !(draggingBackward || animatingBackward)
+        ? topCenterStyle(currentSheet)
+        : null;
+    const outgoingSceneBreak =
+      endsWithSceneBreak(portion) && !(draggingForward || animatingForward)
+        ? bottomCenterStyle(currentSheet)
+        : null;
     const activeForwardBridge =
       (draggingForward || animatingForward) &&
       hasContinuationBridge(portion, nextPortion) &&
@@ -972,6 +1014,23 @@ export function ReaderScreen({
             {
               x: nextSheet.left + bridgeHalfWidth,
               y: nextSheet.top + markerInsetY
+            },
+            forwardProgress
+          )
+        : null;
+    const activeForwardSceneBreak =
+      (draggingForward || animatingForward) &&
+      endsWithSceneBreak(portion) &&
+      currentSheet &&
+      nextSheet
+        ? interpolate(
+            {
+              x: (currentSheet.left + currentSheet.right) / 2,
+              y: currentSheet.bottom - markerInsetY - 12
+            },
+            {
+              x: (nextSheet.left + nextSheet.right) / 2,
+              y: nextSheet.top + markerInsetY + 12
             },
             forwardProgress
           )
@@ -993,12 +1052,33 @@ export function ReaderScreen({
             backwardProgress
           )
         : null;
+    const activeBackwardSceneBreak =
+      (draggingBackward || animatingBackward) &&
+      endsWithSceneBreak(previousPortion) &&
+      previousSheet &&
+      currentSheet
+        ? interpolate(
+            {
+              x: (currentSheet.left + currentSheet.right) / 2,
+              y: currentSheet.top + markerInsetY + 12
+            },
+            {
+              x: (previousSheet.left + previousSheet.right) / 2,
+              y: previousSheet.bottom - markerInsetY - 12
+            },
+            backwardProgress
+          )
+        : null;
 
     return {
       incomingCurrent,
       outgoingCurrent,
+      incomingSceneBreak,
+      outgoingSceneBreak,
       activeForwardBridge,
-      activeBackwardBridge
+      activeBackwardBridge,
+      activeForwardSceneBreak,
+      activeBackwardSceneBreak
     };
   }, [
     dragOffset,
@@ -1430,18 +1510,44 @@ export function ReaderScreen({
           transitioning={transitionEnabled}
         />
         <ContinuationBridgeShell
+          visible={Boolean(continuationStyles.activeBackwardSceneBreak)}
+          style={continuationStyles.activeBackwardSceneBreak}
+          transitioning={transitionEnabled}
+        >
+          <SceneBreakBridge />
+        </ContinuationBridgeShell>
+        <ContinuationBridgeShell
           visible={Boolean(continuationStyles.incomingCurrent)}
           style={continuationStyles.incomingCurrent}
         />
+        <ContinuationBridgeShell
+          visible={Boolean(continuationStyles.incomingSceneBreak)}
+          style={continuationStyles.incomingSceneBreak}
+        >
+          <SceneBreakBridge />
+        </ContinuationBridgeShell>
         <ContinuationBridgeShell
           visible={Boolean(continuationStyles.outgoingCurrent)}
           style={continuationStyles.outgoingCurrent}
         />
         <ContinuationBridgeShell
+          visible={Boolean(continuationStyles.outgoingSceneBreak)}
+          style={continuationStyles.outgoingSceneBreak}
+        >
+          <SceneBreakBridge />
+        </ContinuationBridgeShell>
+        <ContinuationBridgeShell
           visible={Boolean(continuationStyles.activeForwardBridge)}
           style={continuationStyles.activeForwardBridge}
           transitioning={transitionEnabled}
         />
+        <ContinuationBridgeShell
+          visible={Boolean(continuationStyles.activeForwardSceneBreak)}
+          style={continuationStyles.activeForwardSceneBreak}
+          transitioning={transitionEnabled}
+        >
+          <SceneBreakBridge />
+        </ContinuationBridgeShell>
         <div
           ref={trackRef}
           className="portion-track"
@@ -1462,6 +1568,7 @@ export function ReaderScreen({
                 portion={previousPortion}
                 settings={settings}
                 annotationsByBlock={annotationsByBlock}
+                hideTrailingBoundarySceneBreak={endsWithSceneBreak(previousPortion)}
               />
             ) : null}
           </div>
@@ -1480,6 +1587,8 @@ export function ReaderScreen({
                 settings={settings}
                 annotationsByBlock={annotationsByBlock}
                 onAnnotationPress={handleAnnotationPress}
+                hideLeadingBoundarySceneBreak={hasSceneBreakBoundary(previousPortion, portion)}
+                hideTrailingBoundarySceneBreak={endsWithSceneBreak(portion)}
               />
             ) : null}
           </div>
@@ -1498,6 +1607,7 @@ export function ReaderScreen({
                 portion={nextPortion}
                 settings={settings}
                 annotationsByBlock={annotationsByBlock}
+                hideLeadingBoundarySceneBreak={hasSceneBreakBoundary(portion, nextPortion)}
               />
             ) : null}
           </div>

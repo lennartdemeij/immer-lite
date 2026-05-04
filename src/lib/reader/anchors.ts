@@ -103,6 +103,8 @@ export function getPreferredStartAnchor(book: CanonicalBook): ReaderAnchor {
   const summaries = book.sections.map(summarizeSection);
   const strongStart = summaries.find(
     (summary) =>
+      summary.section.matter !== 'front' &&
+      summary.section.matter !== 'back' &&
       summary.textualBlockCount > 0 &&
       !FRONT_MATTER_PATTERNS.some((pattern) => pattern.test(summary.searchText)) &&
       BODY_START_PATTERNS.some((pattern) => pattern.test(summary.searchText))
@@ -118,6 +120,15 @@ export function getPreferredStartAnchor(book: CanonicalBook): ReaderAnchor {
   for (const summary of summaries) {
     if (summary.textualBlockCount === 0) {
       skippedFrontMatter = true;
+      continue;
+    }
+
+    if (summary.section.matter === 'front') {
+      skippedFrontMatter = true;
+      continue;
+    }
+
+    if (summary.section.matter === 'back') {
       continue;
     }
 

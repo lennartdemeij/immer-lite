@@ -13,6 +13,8 @@ interface PortionViewProps {
   settings: ReaderSettings;
   annotationsByBlock: Map<string, TextAnnotation[]>;
   onAnnotationPress?: (annotation: TextAnnotation) => void;
+  hideLeadingBoundarySceneBreak?: boolean;
+  hideTrailingBoundarySceneBreak?: boolean;
 }
 
 interface FragmentSegment {
@@ -187,18 +189,23 @@ export const PortionView = memo(function PortionView({
   portion,
   settings,
   annotationsByBlock,
-  onAnnotationPress
+  onAnnotationPress,
+  hideLeadingBoundarySceneBreak = false,
+  hideTrailingBoundarySceneBreak = false
 }: PortionViewProps) {
   return (
     <div className="portion-sheet">
-      {portion.blocks.map((block) => {
+      {portion.blocks.map((block, index) => {
         if (block.type === 'scene-break') {
+          const isLeadingBoundary = index === 0 && hideLeadingBoundarySceneBreak;
+          const isTrailingBoundary =
+            index === portion.blocks.length - 1 && hideTrailingBoundarySceneBreak;
+          if (isLeadingBoundary || isTrailingBoundary) {
+            return null;
+          }
+
           return (
-            <div key={block.key} className="scene-break" aria-hidden="true">
-              <span />
-              <span />
-              <span />
-            </div>
+            <div key={block.key} className="scene-break" aria-hidden="true" />
           );
         }
 

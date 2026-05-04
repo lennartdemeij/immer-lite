@@ -41,6 +41,9 @@ function makeSection(
     index,
     label,
     href,
+    matter: 'body',
+    anchorIds: [],
+    localLinks: [],
     blocks: blocks.map((block) =>
       'sectionId' in block ? { ...block, sectionId: id } : block
     )
@@ -53,6 +56,7 @@ function makeBook(sections: BookSection[]): CanonicalBook {
     fingerprint: 'fixture',
     metadata: { title: 'Fixture' },
     sections,
+    toc: [],
     resources: {},
     totalBlocks: sections.reduce((total, section) => total + section.blocks.length, 0),
     totalSentences: sections.reduce(
@@ -64,7 +68,13 @@ function makeBook(sections: BookSection[]): CanonicalBook {
           0
         ),
       0
-    )
+    ),
+    parseStats: {
+      confidence: 1,
+      diagnostics: [],
+      parsedAt: new Date(0).toISOString(),
+      durationMs: 0
+    }
   };
 }
 

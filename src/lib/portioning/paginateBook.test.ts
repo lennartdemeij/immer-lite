@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { CanonicalBook, TextBlock } from '../../types/book';
+import type { BookBlock, CanonicalBook, SceneBreakBlock, TextBlock } from '../../types/book';
 import type { ReaderSettings, ViewportMetrics } from '../../types/reader';
 
 vi.mock('./pretextLayout', () => ({
@@ -85,12 +85,13 @@ const settings: ReaderSettings = {
 function makeTextBlock(
   id: string,
   sentenceCount: number,
-  order: number
+  order: number,
+  kind: TextBlock['kind'] = 'paragraph'
 ): TextBlock {
   return {
     id,
     order,
-    kind: 'paragraph',
+    kind,
     sectionId: 'section-0',
     text: Array.from({ length: sentenceCount }, (_, index) => `Sentence ${index + 1}.`).join(' '),
     inlineContent: [],
@@ -105,7 +106,7 @@ function makeTextBlock(
   };
 }
 
-function makeBook(blocks: TextBlock[]): CanonicalBook {
+function makeBook(blocks: BookBlock[]): CanonicalBook {
   return {
     id: 'book-1',
     fingerprint: 'fixture',
@@ -118,12 +119,34 @@ function makeBook(blocks: TextBlock[]): CanonicalBook {
         index: 0,
         label: 'Chapter 1',
         href: 'chapter-1.xhtml',
-        blocks
+        blocks,
+        matter: 'body',
+        anchorIds: [],
+        localLinks: []
       }
     ],
+    toc: [],
     resources: {},
     totalBlocks: blocks.length,
-    totalSentences: blocks.reduce((sum, block) => sum + block.sentences.length, 0)
+    totalSentences: blocks.reduce(
+      (sum, block) => sum + ('sentences' in block ? block.sentences.length : 0),
+      0
+    ),
+    parseStats: {
+      confidence: 1,
+      diagnostics: [],
+      parsedAt: new Date(0).toISOString(),
+      durationMs: 0
+    }
+  };
+}
+
+function makeSceneBreak(id: string, order: number): SceneBreakBlock {
+  return {
+    id,
+    order,
+    kind: 'scene-break',
+    sectionId: 'section-0'
   };
 }
 
@@ -138,7 +161,7 @@ describe('paginateBook', () => {
       width: 390,
       height: 844,
       contentWidth: 320,
-      contentHeight: 220
+      contentHeight: 240
     };
 
     const result = await paginateBook(book, viewport, settings);
@@ -202,5 +225,65 @@ describe('paginateBook', () => {
 
     expect(findPortionIndexForAnchor(after.portions, anchor)).toBe(preservedIndex);
     expect(after.portions[preservedIndex].start.blockId).toBe(anchor.blockId);
+  });
+
+  it('keeps headings with following content instead of leaving them orphaned at the bottom', async () => {
+    const book = makeBook([
+      makeTextBlock('body-1', 2, 0),
+      makeTextBlock('heading-1', 1, 1, 'heading'),
+      makeTextBlock('body-2', 2, 2)
+    ]);
+    const viewport: ViewportMetrics = {
+      width: 390,
+      height: 844,
+      contentWidth: 320,
+      contentHeight: 260
+    };
+
+    const result = await paginateBook(book, viewport, settings);
+
+    expect(result.portions).toHaveLength(3);
+    expect(result.portions[0].blocks).toHaveLength(1);
+    expect(result.portions[0].blocks[0]).toMatchObject({
+      type: 'text',
+      blockId: 'body-1'
+    });
+    expect(result.portions[1].blocks[0]).toMatchObject({
+      type: 'text',
+      blockId: 'heading-1'
+    });
+    expect(result.portions[1].blocks[1]).toMatchObject({
+      type: 'text',
+      blockId: 'body-2'
+    });
+  });
+
+  it('shows a scene break again at the start of the next portion when the previous portion ends with it', async () => {
+    const book = makeBook([
+      makeTextBlock('body-1', 2, 0),
+      makeSceneBreak('break-1', 1),
+      makeTextBlock('body-2', 2, 2)
+    ]);
+    const viewport: ViewportMetrics = {
+      width: 390,
+      height: 844,
+      contentWidth: 320,
+      contentHeight: 240
+    };
+
+    const result = await paginateBook(book, viewport, settings);
+
+    expect(
+      result.portions.map((portion) =>
+        portion.blocks.map((block) =>
+          block.type === 'text'
+            ? `${block.type}:${block.blockId}:${block.startSentence}-${block.endSentence}`
+            : `${block.type}:${block.blockId}`
+        )
+      )
+    ).toEqual([
+      ['text:body-1:0-2', 'scene-break:break-1'],
+      ['text:body-2:0-2']
+    ]);
   });
 });
