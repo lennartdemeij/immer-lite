@@ -4,21 +4,21 @@
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#0e1217",
-  "theme_color": "#0e1217",
-  "description": "Local-first EPUB parsing and viewport-sized vertical reading.",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
+  "description": "Local-first EPUB and PDF parsing with viewport-sized vertical reading.",
   "icons": [
     {
-      "src": "./icon-192.svg",
+      "src": "./icon-192.png",
       "sizes": "192x192",
-      "type": "image/svg+xml",
-      "purpose": "any"
+      "type": "image/png",
+      "purpose": "any maskable"
     },
     {
-      "src": "./icon-512.svg",
+      "src": "./icon-512.png",
       "sizes": "512x512",
-      "type": "image/svg+xml",
-      "purpose": "any"
+      "type": "image/png",
+      "purpose": "any maskable"
     }
   ]
 }

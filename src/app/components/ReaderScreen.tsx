@@ -171,7 +171,7 @@ function getLastTextBlock(portion: ReaderPortion | null): Extract<PortionBlock, 
   return null;
 }
 
-function hasContinuationBridge(from: ReaderPortion | null, to: ReaderPortion | null): boolean {
+function hasContinuationBoundary(from: ReaderPortion | null, to: ReaderPortion | null): boolean {
   const fromBlock = getLastTextBlock(from);
   const toBlock = getFirstTextBlock(to);
 
@@ -179,11 +179,7 @@ function hasContinuationBridge(from: ReaderPortion | null, to: ReaderPortion | n
     return false;
   }
 
-  return (
-    fromBlock.continuationEnd &&
-    toBlock.continuationStart &&
-    fromBlock.blockId === toBlock.blockId
-  );
+  return fromBlock.continuationEnd && toBlock.continuationStart;
 }
 
 function endsWithSceneBreak(portion: ReaderPortion | null): boolean {
@@ -1047,12 +1043,16 @@ export function ReaderScreen({
         rect?.bottom ?? stageHeight - markerInsetY
       ) - markerInsetY - 12}px) translate(-50%, -50%)`
     });
+    const hasForwardContinuationBoundary = hasContinuationBoundary(portion, nextPortion);
+    const hasBackwardContinuationBoundary = hasContinuationBoundary(previousPortion, portion);
+    const forwardBridgeProgress = draggingForward || animatingForward ? forwardProgress : 0;
+    const backwardBridgeProgress = draggingBackward || animatingBackward ? backwardProgress : 0;
     const incomingCurrent =
-      getFirstTextBlock(portion)?.continuationStart && !(draggingBackward || animatingBackward)
+      getFirstTextBlock(portion)?.continuationStart && !hasBackwardContinuationBoundary
         ? topLeftStyle(currentSheet)
         : null;
     const outgoingCurrent =
-      getLastTextBlock(portion)?.continuationEnd && !(draggingForward || animatingForward)
+      getLastTextBlock(portion)?.continuationEnd && !hasForwardContinuationBoundary
         ? bottomRightStyle(currentSheet)
         : null;
     const incomingSceneBreak =
@@ -1065,10 +1065,7 @@ export function ReaderScreen({
         ? bottomCenterStyle(currentSheet)
         : null;
     const activeForwardBridge =
-      (draggingForward || animatingForward) &&
-      hasContinuationBridge(portion, nextPortion) &&
-      currentSheet &&
-      nextSheet
+      hasForwardContinuationBoundary && currentSheet && nextSheet
         ? interpolate(
             {
               x: currentSheet.right - bridgeHalfWidth,
@@ -1078,7 +1075,7 @@ export function ReaderScreen({
               x: nextSheet.left + bridgeHalfWidth,
               y: nextSheet.top + markerInsetY
             },
-            forwardProgress
+            forwardBridgeProgress
           )
         : null;
     const activeForwardSceneBreak =
@@ -1099,10 +1096,7 @@ export function ReaderScreen({
           )
         : null;
     const activeBackwardBridge =
-      (draggingBackward || animatingBackward) &&
-      hasContinuationBridge(previousPortion, portion) &&
-      previousSheet &&
-      currentSheet
+      hasBackwardContinuationBoundary && previousSheet && currentSheet
         ? interpolate(
             {
               x: currentSheet.left + bridgeHalfWidth,
@@ -1112,7 +1106,7 @@ export function ReaderScreen({
               x: previousSheet.right - bridgeHalfWidth,
               y: previousSheet.bottom - markerInsetY
             },
-            backwardProgress
+            backwardBridgeProgress
           )
         : null;
     const activeBackwardSceneBreak =

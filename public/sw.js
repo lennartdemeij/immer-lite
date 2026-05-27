@@ -1,5 +1,14 @@
-const VERSION = 'pretext-v2';
-const APP_SHELL = ['./', './index.html', './manifest.webmanifest'];
+const VERSION = 'pretext-v3';
+const APP_SHELL = [
+  './',
+  './index.html',
+  './manifest.webmanifest',
+  './favicon-16.png',
+  './favicon-32.png',
+  './apple-touch-icon.png',
+  './icon-192.png',
+  './icon-512.png'
+];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
