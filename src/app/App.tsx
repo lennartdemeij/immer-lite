@@ -109,10 +109,14 @@ export function App() {
   const [pagination, setPagination] = useState<PaginationResult>({ portions: [] });
   const [currentIndex, setCurrentIndex] = useState(0);
   const [annotations, setAnnotations] = useState<TextAnnotation[]>([]);
+  const [fullscreenGateActive, setFullscreenGateActive] = useState(() =>
+    typeof window === 'undefined' ? false : isMobileFullscreenTarget() && !isAlreadyFullscreen()
+  );
   const anchorRef = useRef<ReaderAnchor | null>(null);
   const previousBookRef = useRef<CanonicalBook | null>(null);
   const defaultLoadAttemptedRef = useRef(false);
-  const fullscreenBoundRef = useRef(false);
+  const fullscreenGateAttemptedRef = useRef(false);
+  const fullscreenRequestInFlightRef = useRef(false);
   const annotationSyncVersionRef = useRef(0);
 
   const { containerRef, viewport } = useReaderViewport(settings.horizontalPadding);
@@ -127,34 +131,47 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (fullscreenBoundRef.current || !isMobileFullscreenTarget()) {
+    if (!isMobileFullscreenTarget()) {
+      setFullscreenGateActive(false);
       return;
     }
 
-    fullscreenBoundRef.current = true;
-
-    const handleFirstGesture = () => {
-      void requestFullscreenIfPossible()
-        .catch(() => {
-          return;
-        })
-        .finally(() => {
-          if (isAlreadyFullscreen()) {
-            window.removeEventListener('pointerdown', handleFirstGesture, true);
-            window.removeEventListener('keydown', handleFirstGesture, true);
-          }
-        });
+    const syncFullscreenGate = () => {
+      if (fullscreenGateAttemptedRef.current || isAlreadyFullscreen()) {
+        setFullscreenGateActive(false);
+      }
     };
 
-    window.addEventListener('pointerdown', handleFirstGesture, true);
-    window.addEventListener('keydown', handleFirstGesture, true);
+    syncFullscreenGate();
+    document.addEventListener('fullscreenchange', syncFullscreenGate);
+    document.addEventListener('webkitfullscreenchange', syncFullscreenGate);
 
     return () => {
-      window.removeEventListener('pointerdown', handleFirstGesture, true);
-      window.removeEventListener('keydown', handleFirstGesture, true);
-      fullscreenBoundRef.current = false;
+      document.removeEventListener('fullscreenchange', syncFullscreenGate);
+      document.removeEventListener('webkitfullscreenchange', syncFullscreenGate);
     };
   }, []);
+
+  useEffect(() => {
+    if (!isMobileFullscreenTarget()) {
+      return;
+    }
+
+    const handleUserInteraction = () => {
+      if (fullscreenGateActive) {
+        return;
+      }
+      void requestFullscreenFromUserActivation();
+    };
+
+    window.addEventListener('pointerdown', handleUserInteraction, true);
+    window.addEventListener('keydown', handleUserInteraction, true);
+
+    return () => {
+      window.removeEventListener('pointerdown', handleUserInteraction, true);
+      window.removeEventListener('keydown', handleUserInteraction, true);
+    };
+  }, [fullscreenGateActive]);
 
   useEffect(() => {
     if (!book || !viewport) {
@@ -361,6 +378,38 @@ export function App() {
     }
   }
 
+  async function requestFullscreenFromUserActivation() {
+    if (
+      fullscreenRequestInFlightRef.current ||
+      !isMobileFullscreenTarget() ||
+      isAlreadyFullscreen()
+    ) {
+      return;
+    }
+
+    fullscreenRequestInFlightRef.current = true;
+    try {
+      await requestFullscreenIfPossible();
+    } catch {
+      return;
+    } finally {
+      fullscreenRequestInFlightRef.current = false;
+    }
+  }
+
+  function handleFullscreenGatePointerDown(event: React.PointerEvent<HTMLDivElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (fullscreenGateAttemptedRef.current) {
+      return;
+    }
+
+    fullscreenGateAttemptedRef.current = true;
+    void requestFullscreenFromUserActivation().finally(() => {
+      setFullscreenGateActive(false);
+    });
+  }
+
   const portionCount = pagination.portions.length;
   const appBusy = uploading || repaginating;
   const progressMeta = useMemo(() => {
@@ -433,6 +482,14 @@ export function App() {
           </button>
         </div>
       )}
+
+      {fullscreenGateActive ? (
+        <div
+          className="fullscreen-gesture-gate"
+          aria-hidden="true"
+          onPointerDown={handleFullscreenGatePointerDown}
+        />
+      ) : null}
     </div>
   );
 }

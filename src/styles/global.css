@@ -63,6 +63,18 @@ button {
   background: var(--app-base-bg);
 }
 
+.fullscreen-gesture-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  background: transparent;
+  border: 0;
+  opacity: 0;
+  pointer-events: auto;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
 .reader-shell {
   min-height: 100vh;
   min-height: 100svh;

@@ -85,6 +85,10 @@ interface ProgressTilt {
   originY: number;
 }
 
+type NavigatorWithVibration = Navigator & {
+  vibrate?: (pattern: number | number[]) => boolean;
+};
+
 const TAP_TOLERANCE = 10;
 const SNAP_THRESHOLD_RATIO = 0.18;
 const SNAP_THRESHOLD_PX = 84;
@@ -94,6 +98,7 @@ const CHAPTER_TRACK_GAP_PX = 3;
 const CONTINUATION_BRIDGE_WIDTH_PX = 25;
 const PROGRESS_TILT_MAX_Y_DEG = 34;
 const PROGRESS_TILT_MAX_Z_DEG = 7;
+const NAVIGATOR_HAPTIC_MS = 8;
 const LONG_PRESS_MS = 320;
 const SELECTION_SETTLE_MS = 260;
 
@@ -115,6 +120,15 @@ function getNeutralProgressTilt(): ProgressTilt {
     rotateZ: 0,
     originY: 50
   };
+}
+
+function triggerNavigatorHaptic() {
+  if (typeof navigator === 'undefined') {
+    return;
+  }
+
+  const vibrationNavigator = navigator as NavigatorWithVibration;
+  vibrationNavigator.vibrate?.(NAVIGATOR_HAPTIC_MS);
 }
 
 function BookmarkIcon() {
@@ -1230,6 +1244,7 @@ export function ReaderScreen({
 
     if (dragState.moved && nextIndex !== dragState.currentIndex) {
       dragState.currentIndex = nextIndex;
+      triggerNavigatorHaptic();
       onJumpToPortion(nextIndex);
     }
 
