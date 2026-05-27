@@ -1526,7 +1526,7 @@ export function ReaderScreen({
     >
       <header className="reader-header">
         <div className="reader-header-copy">
-          <p className="reader-kicker">{book.metadata.creator ?? 'Local EPUB'}</p>
+          <p className="reader-kicker">{book.metadata.creator ?? 'Local publication'}</p>
           <h1>{book.metadata.title}</h1>
           <p className="reader-section-label">{portion?.sectionLabel}</p>
         </div>

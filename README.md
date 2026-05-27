@@ -1,8 +1,8 @@
-# Pretext EPUB Reader
+# Pretext Reader
 
-Client-side EPUB reader built with Vite, React, and TypeScript. The app parses a local `.epub` entirely in the browser, normalizes the source into a canonical book model, and paginates that model into viewport-sized vertical reading portions.
+Client-side EPUB and PDF reader built with Vite, React, and TypeScript. The app parses a local `.epub` or `.pdf` entirely in the browser, normalizes the source into a canonical book model, and paginates that model into viewport-sized vertical reading portions.
 
-No backend is required. The uploaded EPUB never leaves the browser.
+No backend is required. The uploaded publication never leaves the browser.
 
 ## Stack
 
@@ -10,6 +10,7 @@ No backend is required. The uploaded EPUB never leaves the browser.
 - React
 - TypeScript
 - `JSZip` for in-browser EPUB archive access
+- `pdfjs-dist` for in-browser PDF text and outline extraction
 - `@chenglou/pretext` for rich-inline layout and measurement
 - Vitest for parser and portioning tests
 
@@ -36,11 +37,11 @@ npm test
 
 At runtime the book goes through these phases:
 
-1. Open the EPUB zip in memory.
-2. Read the package document, manifest, spine, metadata, resources, and TOC.
-3. Parse each linear spine document into a DOM.
-4. Annotate relevant DOM elements with browser-computed CSS snapshots.
-5. Convert each spine document into canonical sections and blocks.
+1. Open the EPUB zip or PDF text layer in memory.
+2. Read source metadata and navigation: EPUB package/spine/TOC or PDF metadata/outline.
+3. Parse source content: EPUB spine documents as DOM, or PDF pages as positioned text lines.
+4. Collect styling signals: browser-computed CSS for EPUB, inferred typography and layout for PDF.
+5. Convert source content into canonical sections and blocks.
 6. Segment text blocks into sentence units with stable offsets.
 7. Classify sections into `front`, `body`, or `back`.
 8. Build parse diagnostics and a confidence score.
@@ -49,6 +50,8 @@ At runtime the book goes through these phases:
 The main entry points are:
 
 - Parser: [src/lib/epub/loadEpub.ts](src/lib/epub/loadEpub.ts)
+- PDF parser: [src/lib/pdf/loadPdf.ts](src/lib/pdf/loadPdf.ts)
+- Publication loader: [src/lib/publication/loadPublication.ts](src/lib/publication/loadPublication.ts)
 - Style measurement: [src/lib/epub/computeStyles.ts](src/lib/epub/computeStyles.ts)
 - Section heuristics: [src/lib/epub/heuristics.ts](src/lib/epub/heuristics.ts)
 - Portioner: [src/lib/portioning/paginateBook.ts](src/lib/portioning/paginateBook.ts)

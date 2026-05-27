@@ -16,8 +16,8 @@ export function UploadScreen({
   const detail = useMemo(
     () =>
       busy
-        ? 'Parsing the EPUB locally, normalizing the markup, and building sentence-safe portions.'
-        : 'Drop a local EPUB here or browse for a file. Nothing leaves the browser.',
+        ? 'Parsing the publication locally, normalizing the text, and building sentence-safe portions.'
+        : 'Drop a local EPUB or PDF here, or browse for a file. Nothing leaves the browser.',
     [busy]
   );
 
@@ -76,7 +76,7 @@ export function UploadScreen({
         <p className="eyebrow">Immer Lite</p>
         <h1>Modern vertical reading, portioned for the actual viewport.</h1>
         <p className="upload-copy">
-          This reader ingests a local EPUB, reinterprets the markup into a clean
+          This reader ingests a local EPUB or PDF, reinterprets the source into a clean
           house style, and paginates it into full-screen vertical portions using
           Pretext measurements and sentence-safe boundaries.
         </p>
@@ -105,7 +105,7 @@ export function UploadScreen({
           disabled={busy}
         >
           <span className="dropzone-title">
-            {busy ? 'Building the reader view…' : 'Upload a local `.epub`'}
+            {busy ? 'Building the reader view…' : 'Upload a local `.epub` or `.pdf`'}
           </span>
           <span className="dropzone-detail">{detail}</span>
           <span className="dropzone-cta">
@@ -117,7 +117,7 @@ export function UploadScreen({
           ref={inputRef}
           className="sr-only"
           type="file"
-          accept=".epub,application/epub+zip"
+          accept=".epub,.pdf,application/epub+zip,application/pdf"
           onChange={(event) => acceptFile(event.target.files)}
         />
 

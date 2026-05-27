@@ -41,13 +41,13 @@ export function SettingsPanel({
             className="settings-upload-button"
             onClick={() => inputRef.current?.click()}
           >
-            Load another EPUB
+            Load another file
           </button>
           <input
             ref={inputRef}
             className="sr-only"
             type="file"
-            accept=".epub,application/epub+zip"
+            accept=".epub,.pdf,application/epub+zip,application/pdf"
             onChange={(event) => acceptFile(event.target.files)}
           />
         </div>

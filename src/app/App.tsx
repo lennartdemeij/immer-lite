@@ -6,7 +6,7 @@ import {
   useRef,
   useState
 } from 'react';
-import { loadEpubBook, revokeBookResources } from '../lib/epub/loadEpub';
+import { loadPublication, revokeBookResources } from '../lib/publication/loadPublication';
 import { paginateBook } from '../lib/portioning/paginateBook';
 import {
   deleteAnnotation,
@@ -237,7 +237,7 @@ export function App() {
     setUploading(true);
 
     try {
-      const loaded = await loadEpubBook(file);
+      const loaded = await loadPublication(file);
       const stored = loadStoredPosition(loaded.fingerprint);
       revokeBookResources(previousBookRef.current);
       previousBookRef.current = loaded;
@@ -253,7 +253,7 @@ export function App() {
       setError(
         loadError instanceof Error
           ? loadError.message
-          : 'Could not open the EPUB.'
+          : 'Could not open the publication.'
       );
     } finally {
       setUploading(false);
