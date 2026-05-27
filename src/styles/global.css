@@ -637,7 +637,7 @@ button {
 .chapter-progress-annotation {
   position: absolute;
   right: 0;
-  width: 8px;
+  width: 6px;
   height: 2px;
   border-radius: 0;
   transform: translateY(-50%);
