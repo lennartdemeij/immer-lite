@@ -7,7 +7,7 @@ const VERTICAL_PADDING = 16;
 const PORTION_EDGE_PADDING = 28;
 const CHAPTER_NAVIGATOR_GUTTER = 76;
 const MOBILE_CHAPTER_NAVIGATOR_GUTTER = 56;
-const TEXT_WIDTH_BOOST = 60;
+const TEXT_WIDTH_BOOST = 48;
 
 function getChapterNavigatorGutter(width: number): number {
   return width <= 720 ? MOBILE_CHAPTER_NAVIGATOR_GUTTER : CHAPTER_NAVIGATOR_GUTTER;

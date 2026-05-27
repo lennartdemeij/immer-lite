@@ -34,14 +34,6 @@ export function UploadScreen({
       <main className="reader-loading-view" aria-hidden="true">
         <section className="reader-loading-shell">
           <header className="reader-loading-header">
-            <div className="reader-loading-header-copy">
-              <span className="reader-loading-shimmer-block reader-loading-kicker" />
-              <div className="reader-loading-title">
-                <span className="reader-loading-shimmer-block" />
-                <span className="reader-loading-shimmer-block short" />
-              </div>
-              <span className="reader-loading-shimmer-block reader-loading-subtitle" />
-            </div>
             <span className="reader-loading-shimmer-block reader-loading-gear" />
           </header>
 
