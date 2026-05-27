@@ -98,7 +98,7 @@ const CHAPTER_TRACK_GAP_PX = 3;
 const CONTINUATION_BRIDGE_WIDTH_PX = 25;
 const PROGRESS_TILT_MAX_Y_DEG = 34;
 const PROGRESS_TILT_MAX_Z_DEG = 7;
-const NAVIGATOR_HAPTIC_MS = 8;
+const READER_HAPTIC_MS = 8;
 const LONG_PRESS_MS = 320;
 const SELECTION_SETTLE_MS = 260;
 
@@ -122,13 +122,13 @@ function getNeutralProgressTilt(): ProgressTilt {
   };
 }
 
-function triggerNavigatorHaptic() {
+function triggerReaderHaptic() {
   if (typeof navigator === 'undefined') {
     return;
   }
 
   const vibrationNavigator = navigator as NavigatorWithVibration;
-  vibrationNavigator.vibrate?.(NAVIGATOR_HAPTIC_MS);
+  vibrationNavigator.vibrate?.(READER_HAPTIC_MS);
 }
 
 function BookmarkIcon() {
@@ -335,6 +335,7 @@ export function ReaderScreen({
   const progressPointerIdRef = useRef<number | null>(null);
   const progressDragRef = useRef<ProgressDragState | null>(null);
   const snapTimeoutRef = useRef<number | null>(null);
+  const settleHapticPendingRef = useRef(false);
   const dragAnimationFrameRef = useRef<number | null>(null);
   const pendingDragOffsetRef = useRef(0);
   const dragOffsetRef = useRef(0);
@@ -506,6 +507,10 @@ export function ReaderScreen({
   function animateToNeighbor(direction: SnapDirection) {
     const stageHeight = stageRef.current?.clientHeight ?? 0;
     if (stageHeight <= 0) {
+      if (settleHapticPendingRef.current) {
+        settleHapticPendingRef.current = false;
+        triggerReaderHaptic();
+      }
       if (direction === 'forward') {
         onNext();
       } else {
@@ -526,6 +531,7 @@ export function ReaderScreen({
 
   function navigateByTap(clientY: number) {
     if (clientY >= 0 && nextPortion) {
+      triggerReaderHaptic();
       animateToNeighbor('forward');
     }
   }
@@ -1244,7 +1250,7 @@ export function ReaderScreen({
 
     if (dragState.moved && nextIndex !== dragState.currentIndex) {
       dragState.currentIndex = nextIndex;
-      triggerNavigatorHaptic();
+      triggerReaderHaptic();
       onJumpToPortion(nextIndex);
     }
 
@@ -1409,15 +1415,18 @@ export function ReaderScreen({
     );
 
     if (deltaY <= -threshold && nextPortion) {
+      settleHapticPendingRef.current = true;
       animateToNeighbor('forward');
       return;
     }
 
     if (deltaY >= threshold && previousPortion) {
+      settleHapticPendingRef.current = true;
       animateToNeighbor('backward');
       return;
     }
 
+    settleHapticPendingRef.current = true;
     animateBackToRest();
   }
 
@@ -1431,10 +1440,18 @@ export function ReaderScreen({
 
     if (!snapDirection) {
       setTransitionEnabled(false);
+      if (settleHapticPendingRef.current) {
+        settleHapticPendingRef.current = false;
+        triggerReaderHaptic();
+      }
       return;
     }
 
     const direction = snapDirection;
+    if (settleHapticPendingRef.current) {
+      settleHapticPendingRef.current = false;
+      triggerReaderHaptic();
+    }
     setTransitionEnabled(false);
     flushDragOffset(0);
     setIsDragging(false);
