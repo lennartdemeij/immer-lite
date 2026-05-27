@@ -1191,7 +1191,7 @@ export function ReaderScreen({
   function getProgressTilt(clientX: number, clientY: number, deltaY: number): ProgressTilt {
     const viewportWidth = Math.max(window.innerWidth || viewport?.width || 1, 1);
     const viewportHeight = Math.max(window.innerHeight || viewport?.height || 1, 1);
-    const horizontalRatio = clamp((clientX / viewportWidth) * 1.25, 0, 1);
+    const horizontalRatio = clamp((clientX / viewportWidth) * 4, 0, 1);
     const verticalDragRatio = clamp(-deltaY / 95, -1, 1);
 
     return {
