@@ -15,10 +15,23 @@ export interface ViewportMetrics {
 }
 
 export interface ReaderAnchor {
+  locator?: string;
+  sectionId?: string;
+  sectionIndex?: number;
+  sectionHref?: string;
   blockId: string;
   blockOrder: number;
   sentenceIndex: number;
   lineOffset: number;
+  progression?: number;
+  excerpt?: string;
+}
+
+export interface ReaderRectSnapshot {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
 export interface RenderFragment {
@@ -84,12 +97,14 @@ export interface PaginationResult {
 export interface TextAnnotation {
   id: string;
   fingerprint: string;
+  locator?: ReaderAnchor;
   blockId: string;
   blockOrder: number;
   startOffset: number;
   endOffset: number;
   sentenceIndex: number;
   selectedText: string;
+  rects?: ReaderRectSnapshot[];
   note: string;
   createdAt: string;
   updatedAt: string;

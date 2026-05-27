@@ -54,6 +54,9 @@ The main entry points are:
 - Portioner: [src/lib/portioning/paginateBook.ts](src/lib/portioning/paginateBook.ts)
 - Pretext adapter: [src/lib/portioning/pretextLayout.ts](src/lib/portioning/pretextLayout.ts)
 - Reader anchors: [src/lib/reader/anchors.ts](src/lib/reader/anchors.ts)
+- Persistence: [src/lib/persistence/storage.ts](src/lib/persistence/storage.ts) and [src/lib/persistence/indexedDb.ts](src/lib/persistence/indexedDb.ts)
+- Rect mapping: [src/lib/reader/contentRects.ts](src/lib/reader/contentRects.ts)
+- PWA bootstrap: [src/lib/pwa/registerServiceWorker.ts](src/lib/pwa/registerServiceWorker.ts)
 
 ## Canonical data model
 
@@ -565,6 +568,112 @@ Priority:
 
 This uses the parser's `matter` classification plus another pass over title-like patterns.
 
+### Rich locators and anchor fallback
+
+Reader anchors are no longer just `blockId + sentenceIndex + lineOffset`.
+
+They now also carry optional context such as:
+
+- `locator` string
+- `sectionId`
+- `sectionIndex`
+- `sectionHref`
+- `progression`
+- `excerpt`
+
+During pagination, each portion boundary anchor is enriched with section metadata and a short textual excerpt from the sentence it points to.
+
+This extra locator data is used in two places:
+
+- persistence, so stored positions and annotations are not tied only to a single block id
+- fallback anchor recovery, so the reader can still recover a reasonable position if an exact `blockId` no longer exists
+
+Current anchor recovery order:
+
+1. exact `blockId`
+2. `excerpt` text match in the book
+3. same `sectionId`
+4. nearest `progression`
+5. default book start
+
+This is still much simpler than full EPUB CFI, but substantially richer than a bare block id.
+
+## Persistence and offline
+
+Implemented in [src/lib/persistence/storage.ts](src/lib/persistence/storage.ts), [src/lib/persistence/indexedDb.ts](src/lib/persistence/indexedDb.ts), [src/lib/pwa/registerServiceWorker.ts](src/lib/pwa/registerServiceWorker.ts), and the assets in [public](public).
+
+The project now has two persistence layers:
+
+- synchronous `localStorage` cache for immediate app bootstrap
+- structured IndexedDB stores for durable storage and future migrations
+
+### IndexedDB stores
+
+Current stores:
+
+- `settings`
+- `positions`
+- `annotations`
+- `publications`
+- `meta`
+
+Responsibilities:
+
+- `settings` stores active reader settings
+- `positions` stores latest reading position per book fingerprint
+- `annotations` stores user annotations
+- `publications` stores recently opened EPUB blobs for reopen/offline use
+- `meta` stores persistence schema version information
+
+### Storage migration
+
+On startup, the app runs a migration pass from legacy `localStorage` keys into IndexedDB.
+
+Current migrated keys:
+
+- `pretext-reader:settings`
+- `pretext-reader:positions`
+- `pretext-reader:annotations`
+
+After migration:
+
+- IndexedDB becomes the durable backing store
+- `localStorage` remains a bootstrap cache
+- writes are mirrored to both layers
+
+This keeps the current startup path fast while making the storage model more evolvable.
+
+### Stored publication reopening
+
+When a user opens a local EPUB file, the file is persisted into the `publications` store.
+
+Startup order is now:
+
+1. hydrate IndexedDB-backed caches
+2. reopen the latest stored local publication if one exists
+3. otherwise fall back to the bundled default `book.epub`
+
+The bundled default book is intentionally not re-saved into the publication store, so it does not overwrite a real user-uploaded offline book.
+
+### Service worker and manifest
+
+The app now registers a production-only service worker and ships a web app manifest.
+
+Current PWA behavior:
+
+- cache app shell resources on install
+- use same-origin cache-first fetch handling
+- cache newly fetched same-origin resources
+- clear old cache versions on activation
+- trigger reload on service-worker controller change
+
+Files involved:
+
+- [public/sw.js](public/sw.js)
+- [public/manifest.webmanifest](public/manifest.webmanifest)
+- [public/icon-192.svg](public/icon-192.svg)
+- [public/icon-512.svg](public/icon-512.svg)
+
 ## Portioner: exact steps
 
 Implemented in [src/lib/portioning/paginateBook.ts](src/lib/portioning/paginateBook.ts).
@@ -582,10 +691,16 @@ Internal cursor shape:
 
 Public anchors use:
 
+- `locator`
+- `sectionId`
+- `sectionIndex`
+- `sectionHref`
 - `blockId`
 - `blockOrder`
 - `sentenceIndex`
 - `lineOffset`
+- `progression`
+- `excerpt`
 
 If a caller provides `startAnchor`, pagination starts there. Otherwise it starts at the first block.
 
@@ -771,6 +886,28 @@ When viewport or settings change:
 
 This avoids treating the previous portion index as stable across reflow.
 
+## Rect-aware content mapping
+
+Implemented in [src/lib/reader/contentRects.ts](src/lib/reader/contentRects.ts) and consumed in [src/app/components/ReaderScreen.tsx](src/app/components/ReaderScreen.tsx).
+
+The reader now maintains a small geometry layer for text selections and annotations.
+
+Current behavior:
+
+- when the user selects text, the DOM `Range` client rects are captured and normalized relative to the current portion pane
+- saved annotations can store those normalized rect snapshots
+- when an annotation is opened again, the reader can re-measure the live DOM spans that overlap the annotation offsets
+- the current portion then renders an absolute overlay highlight based on those rects
+
+This is useful because offsets alone answer "what text is selected", while rect mapping answers "where is that text on screen right now".
+
+That geometry layer is the basis for more advanced features later, such as:
+
+- better visual annotation overlays
+- tap-to-annotation hit testing
+- region-based navigation
+- focus or guided-reading modes
+
 ## Current tests
 
 The test suite currently covers:
@@ -784,6 +921,7 @@ The test suite currently covers:
 - oversized-sentence fallback
 - heading-orphan prevention
 - anchor preservation after repagination
+- richer section-based anchor fallback
 
 See:
 

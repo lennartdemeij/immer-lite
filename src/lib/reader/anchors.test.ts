@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { BookBlock, BookSection, CanonicalBook, TextBlock } from '../../types/book';
-import { getPreferredStartAnchor } from './anchors';
+import { clampAnchorToBook, getPreferredStartAnchor } from './anchors';
 
 function makeTextBlock(
   id: string,
@@ -149,6 +149,29 @@ describe('getPreferredStartAnchor', () => {
     expect(getPreferredStartAnchor(book)).toMatchObject({
       blockId: 'body-paragraph',
       blockOrder: 1
+    });
+  });
+
+  it('can recover an anchor by section when the original block id no longer exists', () => {
+    const book = makeBook([
+      makeSection('chapter-1', 0, 'Chapter 1', 'chapter-1.xhtml', [
+        makeTextBlock('chapter-1-heading', 0, 'Chapter 1', 'heading'),
+        makeTextBlock('chapter-1-body', 1, 'The body starts here. It keeps going.')
+      ])
+    ]);
+
+    expect(
+      clampAnchorToBook(book, {
+        blockId: 'missing-block',
+        blockOrder: 999,
+        sentenceIndex: 0,
+        lineOffset: 0,
+        sectionId: 'chapter-1',
+        excerpt: 'The body starts here.'
+      })
+    ).toMatchObject({
+      sectionId: 'chapter-1',
+      blockId: 'chapter-1-heading'
     });
   });
 });

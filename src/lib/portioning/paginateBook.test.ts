@@ -227,6 +227,34 @@ describe('paginateBook', () => {
     expect(after.portions[preservedIndex].start.blockId).toBe(anchor.blockId);
   });
 
+  it('paginates the full book when restoring from a saved anchor', async () => {
+    const book = makeBook([makeTextBlock('block-1', 6, 0)]);
+    const viewport: ViewportMetrics = {
+      width: 390,
+      height: 844,
+      contentWidth: 320,
+      contentHeight: 180
+    };
+    const anchor = {
+      blockId: 'block-1',
+      blockOrder: 0,
+      sentenceIndex: 4,
+      lineOffset: 0
+    };
+
+    const result = await paginateBook(book, viewport, settings, anchor);
+    const restoredIndex = findPortionIndexForAnchor(result.portions, anchor);
+
+    expect(result.portions[0].start).toMatchObject({
+      blockId: 'block-1',
+      sentenceIndex: 0
+    });
+    expect(restoredIndex).toBeGreaterThan(0);
+    expect(result.portions[restoredIndex].start.sentenceIndex).toBeLessThanOrEqual(
+      anchor.sentenceIndex
+    );
+  });
+
   it('keeps headings with following content instead of leaving them orphaned at the bottom', async () => {
     const book = makeBook([
       makeTextBlock('body-1', 2, 0),

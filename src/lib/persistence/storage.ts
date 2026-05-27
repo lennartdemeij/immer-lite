@@ -1,4 +1,17 @@
 import type { ReaderAnchor, ReaderSettings, TextAnnotation } from '../../types/reader';
+import {
+  deleteAnnotationFromIndexedDb,
+  migrateLegacyLocalStorageToIndexedDb,
+  readAnnotationsFromIndexedDb,
+  readLatestPublicationFromIndexedDb,
+  readPositionsFromIndexedDb,
+  readSettingsFromIndexedDb,
+  replaceAnnotationsInIndexedDb,
+  savePublicationToIndexedDb,
+  writeAnnotationToIndexedDb,
+  writePositionToIndexedDb,
+  writeSettingsToIndexedDb
+} from './indexedDb';
 
 const SETTINGS_KEY = 'pretext-reader:settings';
 const POSITION_KEY = 'pretext-reader:positions';
@@ -15,7 +28,7 @@ export const DEFAULT_SETTINGS: ReaderSettings = {
   fontSize: 21,
   lineHeight: 1.72,
   horizontalPadding: 28,
-  theme: 'dark'
+  theme: 'light'
 };
 
 export function loadSettings(): ReaderSettings {
@@ -36,6 +49,7 @@ export function loadSettings(): ReaderSettings {
 
 export function saveSettings(settings: ReaderSettings): void {
   window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  void writeSettingsToIndexedDb(settings);
 }
 
 export function loadStoredPosition(fingerprint: string): StoredBookPosition | null {
@@ -57,6 +71,7 @@ export function saveStoredPosition(entry: StoredBookPosition): void {
   const positions = raw ? ((JSON.parse(raw) as StoredBookPosition[]) ?? []) : [];
   const next = [entry, ...positions.filter((item) => item.fingerprint !== entry.fingerprint)].slice(0, 12);
   window.localStorage.setItem(POSITION_KEY, JSON.stringify(next));
+  void writePositionToIndexedDb(entry);
 }
 
 function loadAllAnnotations(): TextAnnotation[] {
@@ -103,20 +118,61 @@ export function saveAnnotation(annotation: TextAnnotation): TextAnnotation[] {
     annotation
   ];
   saveAllAnnotations(next);
+  void writeAnnotationToIndexedDb(annotation);
   return loadAnnotations(annotation.fingerprint);
 }
 
 export function deleteAnnotation(annotationId: string, fingerprint: string): TextAnnotation[] {
   const annotations = loadAllAnnotations().filter((entry) => entry.id !== annotationId);
   saveAllAnnotations(annotations);
+  void deleteAnnotationFromIndexedDb(annotationId);
   return loadAnnotations(fingerprint);
 }
 
 export function replaceAllAnnotations(annotations: TextAnnotation[], fingerprint: string): TextAnnotation[] {
   saveAllAnnotations(annotations);
+  void replaceAnnotationsInIndexedDb(annotations);
   return loadAnnotations(fingerprint);
 }
 
 export function getAllAnnotations(): TextAnnotation[] {
   return loadAllAnnotations();
+}
+
+export async function hydratePersistenceCaches(): Promise<{
+  settings: ReaderSettings;
+  positions: StoredBookPosition[];
+  annotations: TextAnnotation[];
+}> {
+  await migrateLegacyLocalStorageToIndexedDb();
+
+  const [settings, positions, annotations] = await Promise.all([
+    readSettingsFromIndexedDb(),
+    readPositionsFromIndexedDb(),
+    readAnnotationsFromIndexedDb()
+  ]);
+
+  if (settings) {
+    window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  }
+  if (positions.length > 0) {
+    window.localStorage.setItem(POSITION_KEY, JSON.stringify(positions));
+  }
+  if (annotations.length > 0) {
+    window.localStorage.setItem(ANNOTATIONS_KEY, JSON.stringify(annotations));
+  }
+
+  return {
+    settings: settings ?? loadSettings(),
+    positions,
+    annotations
+  };
+}
+
+export async function saveOpenedPublication(file: File, fingerprint: string): Promise<void> {
+  await savePublicationToIndexedDb(fingerprint, file);
+}
+
+export async function loadLatestStoredPublication(): Promise<File | null> {
+  return readLatestPublicationFromIndexedDb();
 }

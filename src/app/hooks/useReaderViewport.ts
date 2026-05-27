@@ -5,6 +5,13 @@ const TOP_CHROME = 94;
 const BOTTOM_CHROME = 12;
 const VERTICAL_PADDING = 16;
 const PORTION_EDGE_PADDING = 28;
+const CHAPTER_NAVIGATOR_GUTTER = 76;
+const MOBILE_CHAPTER_NAVIGATOR_GUTTER = 56;
+const TEXT_WIDTH_BOOST = 60;
+
+function getChapterNavigatorGutter(width: number): number {
+  return width <= 720 ? MOBILE_CHAPTER_NAVIGATOR_GUTTER : CHAPTER_NAVIGATOR_GUTTER;
+}
 
 export function useReaderViewport(horizontalPadding: number) {
   const [node, setNode] = useState<HTMLDivElement | null>(null);
@@ -41,7 +48,13 @@ export function useReaderViewport(horizontalPadding: number) {
     return {
       width: size.width,
       height: size.height,
-      contentWidth: Math.max(240, size.width - horizontalPadding * 2),
+      contentWidth: Math.max(
+        240,
+        size.width -
+          horizontalPadding * 2 -
+          getChapterNavigatorGutter(size.width) +
+          TEXT_WIDTH_BOOST
+      ),
       contentHeight: Math.max(
         200,
         size.height - TOP_CHROME - BOTTOM_CHROME - VERTICAL_PADDING * 2 - PORTION_EDGE_PADDING * 2

@@ -63,7 +63,7 @@ function getSentenceInlineSlice(
 }
 
 function normalizeSentenceInlines(inlines: BookInline[]): BookInline[] {
-  return inlines
+  const trimmed = inlines
     .map((inline, index) => {
       let text = inline.text;
       if (index === 0) {
@@ -81,6 +81,46 @@ function normalizeSentenceInlines(inlines: BookInline[]): BookInline[] {
       };
     })
     .filter((value): value is BookInline => Boolean(value));
+
+  const normalized: BookInline[] = [];
+
+  for (const inline of trimmed) {
+    if (/^\s+$/.test(inline.text)) {
+      const nextSpace = inline.text.replace(/\s+/g, ' ');
+      const previous = normalized[normalized.length - 1];
+
+      if (previous) {
+        previous.text = `${previous.text}${nextSpace}`;
+        previous.endOffset = inline.endOffset ?? previous.endOffset;
+        continue;
+      }
+    }
+
+    normalized.push({ ...inline });
+  }
+
+  for (let index = 0; index < normalized.length - 1; index += 1) {
+    const current = normalized[index];
+    const next = normalized[index + 1];
+    const trailingSpaceMatch = current.text.match(/\s+$/);
+
+    if (!trailingSpaceMatch || /^\s+$/.test(current.text)) {
+      continue;
+    }
+
+    const normalizedSpace = trailingSpaceMatch[0].replace(/\s+/g, ' ');
+    current.text = current.text.slice(0, -trailingSpaceMatch[0].length);
+    current.endOffset =
+      typeof current.endOffset === 'number'
+        ? current.endOffset - trailingSpaceMatch[0].length
+        : current.endOffset;
+    next.text = `${normalizedSpace}${next.text}`;
+    if (typeof current.endOffset === 'number') {
+      next.startOffset = current.endOffset;
+    }
+  }
+
+  return normalized.filter((inline) => inline.text.length > 0);
 }
 
 export function buildRichSlice(

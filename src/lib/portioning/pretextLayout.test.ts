@@ -89,6 +89,31 @@ describe('buildRichSlice', () => {
     expect(slice.items.map((item) => item.text).join('')).toBe('Sentence one. Sentence two.');
   });
 
+  it('preserves a visible space across styled inline boundaries', () => {
+    const block = makeBlock();
+    block.text = 'certain sacrality';
+    block.inlineContent = [
+      { id: 'w1', text: 'certain', marks: [], startOffset: 0, endOffset: 7 },
+      { id: 'w2', text: ' ', marks: [], startOffset: 7, endOffset: 8 },
+      { id: 'w3', text: 'sacrality', marks: ['italic'], startOffset: 8, endOffset: 17 }
+    ];
+    block.sentences = [
+      {
+        id: 'sentence-1',
+        index: 0,
+        text: 'certain sacrality',
+        inlineIds: ['w1', 'w2', 'w3'],
+        startOffset: 0,
+        endOffset: 17
+      }
+    ];
+
+    const slice = buildRichSlice(block, 0, 1, settings);
+
+    expect(slice.items.map((item) => item.text)).toEqual(['certain', ' sacrality']);
+    expect(slice.meta[1]?.blockStart).toBe(7);
+  });
+
   it('restores collapsed spaces between fragments on the same rendered line', () => {
     const slice = buildRichSlice(makeBlock(), 0, 2, settings);
 

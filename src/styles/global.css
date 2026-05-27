@@ -87,14 +87,19 @@ button {
 }
 
 .theme-light {
-  --app-base-bg: #efe4d0;
-  --surface: rgba(255, 250, 242, 0.8);
-  --surface-strong: rgba(255, 252, 247, 0.92);
-  --text: #221912;
-  --muted: rgba(48, 33, 22, 0.64);
-  --stroke: rgba(53, 36, 22, 0.12);
-  --accent: #b55f2d;
-  --shadow: 0 28px 60px rgba(71, 35, 11, 0.14);
+  --app-base-bg: #ffffff;
+  --surface: rgba(255, 255, 255, 0.86);
+  --surface-strong: rgba(255, 255, 255, 0.96);
+  --text: #161624;
+  --muted: rgba(34, 33, 48, 0.58);
+  --stroke: rgba(36, 32, 64, 0.12);
+  --accent: #6d55ff;
+  --navigator-completed: #6d55ff;
+  --navigator-current: #9b8dff;
+  --navigator-upcoming: #dedee8;
+  --navigator-marker: #ffffff;
+  --navigator-annotation: #6d55ff;
+  --shadow: 0 28px 60px rgba(45, 39, 107, 0.12);
 }
 
 .theme-sepia {
@@ -105,6 +110,11 @@ button {
   --muted: rgba(61, 42, 27, 0.66);
   --stroke: rgba(74, 44, 24, 0.14);
   --accent: #a74f2b;
+  --navigator-completed: rgba(167, 79, 43, 0.68);
+  --navigator-current: rgba(167, 79, 43, 0.42);
+  --navigator-upcoming: rgba(93, 73, 48, 0.16);
+  --navigator-marker: rgba(255, 250, 242, 0.96);
+  --navigator-annotation: rgba(167, 79, 43, 0.8);
   --shadow: 0 28px 60px rgba(92, 56, 20, 0.16);
   background:
     radial-gradient(circle at top, rgba(196, 151, 77, 0.16), transparent 36%),
@@ -120,6 +130,11 @@ button {
   --muted: rgba(214, 222, 232, 0.62);
   --stroke: rgba(220, 228, 237, 0.12);
   --accent: #f0a55c;
+  --navigator-completed: rgba(240, 165, 92, 0.72);
+  --navigator-current: rgba(240, 165, 92, 0.44);
+  --navigator-upcoming: rgba(220, 228, 237, 0.16);
+  --navigator-marker: rgba(255, 252, 247, 0.96);
+  --navigator-annotation: rgba(240, 165, 92, 0.88);
   --shadow: 0 28px 60px rgba(0, 0, 0, 0.28);
   background:
     radial-gradient(circle at top, rgba(89, 124, 154, 0.22), transparent 34%),
@@ -471,6 +486,11 @@ button {
   max-width: 18ch;
 }
 
+.reader-header-copy {
+  opacity: 0;
+  pointer-events: none;
+}
+
 .reader-kicker,
 .reader-section-label,
 .reader-footer,
@@ -511,7 +531,12 @@ button {
   align-items: center;
   justify-content: center;
   flex: 0 0 auto;
+  border: 0 !important;
+  border-radius: 0;
+  background: transparent;
   color: var(--text);
+  padding: 0;
+  backdrop-filter: none;
 }
 
 .settings-icon {
@@ -520,6 +545,7 @@ button {
   display: block;
   color: var(--text);
   stroke: currentColor;
+  opacity: 0.2;
 }
 
 .reader-stage {
@@ -539,67 +565,104 @@ button {
 
 .chapter-progress {
   position: absolute;
-  top: calc(var(--safe-top) + 108px);
-  right: calc(18px + var(--safe-right));
-  bottom: calc(44px + var(--safe-bottom));
+  top: 0;
+  right: var(--safe-right);
+  bottom: 0;
   z-index: 11;
-  width: 18px;
+  width: 32px;
   display: flex;
-  justify-content: center;
+  justify-content: flex-end;
   pointer-events: auto;
 }
 
 .chapter-progress-track {
   position: relative;
-  width: 8px;
+  width: 16px;
   height: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 6px 0;
+  padding: 0;
+  overflow: hidden;
   pointer-events: auto;
   touch-action: none;
   cursor: grab;
+  transition: width 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.chapter-progress-strip {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 100%;
+  transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+
+.chapter-progress-track.dragging {
+  width: 32px;
+}
+
+.chapter-progress-track.dragging .chapter-progress-strip {
+  transition: none;
 }
 
 .chapter-progress-segment {
-  min-height: 10px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.18);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
-  transition: background 180ms ease, opacity 180ms ease;
-  opacity: 0.6;
+  position: absolute;
+  right: 0;
+  width: 6px;
+  height: 4px;
+  min-height: 4px;
+  border-radius: 0;
+  background: var(--navigator-upcoming);
+  transition: width 180ms cubic-bezier(0.22, 1, 0.36, 1), background 180ms ease, opacity 180ms ease;
+  opacity: 1;
+}
+
+.chapter-progress-track.dragging .chapter-progress-segment {
+  width: 32px;
+}
+
+.chapter-progress-segment.completed {
+  background: var(--navigator-completed);
 }
 
 .chapter-progress-segment.active {
-  background: rgba(240, 165, 92, 0.5);
-  opacity: 1;
+  background: var(--navigator-current);
+}
+
+.chapter-progress-segment.upcoming {
+  background: var(--navigator-upcoming);
 }
 
 .chapter-progress-marker {
   position: absolute;
-  left: 50%;
-  width: 18px;
-  height: 18px;
-  border-radius: 999px;
-  transform: translate(-50%, -50%);
-  background: rgba(255, 252, 247, 0.95);
-  box-shadow:
-    0 0 0 3px rgba(240, 165, 92, 0.24),
-    0 6px 18px rgba(0, 0, 0, 0.2);
+  top: 50%;
+  right: 0;
+  width: 8px;
+  height: 3px;
+  border-radius: 0;
+  transform: translateY(-50%);
+  background: var(--navigator-marker);
+  box-shadow: none;
+  opacity: 0;
   pointer-events: none;
+  z-index: 3;
 }
 
 .chapter-progress-annotation {
   position: absolute;
-  left: 50%;
-  width: 12px;
+  right: 0;
+  width: 8px;
   height: 2px;
-  border-radius: 999px;
-  transform: translate(-50%, -50%);
-  background: rgba(240, 165, 92, 0.85);
-  box-shadow: 0 0 0 1px rgba(18, 20, 23, 0.24);
+  border-radius: 0;
+  transform: translateY(-50%);
+  background: var(--navigator-annotation);
+  box-shadow: none;
   pointer-events: none;
+  z-index: 2;
+  transition: width 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.chapter-progress-track.dragging .chapter-progress-annotation {
+  width: 32px;
 }
 
 .reader-stage.dragging,
@@ -663,6 +726,24 @@ button {
 
 .portion-pane-current .portion-sheet {
   pointer-events: auto;
+  transform: none;
+  transform-origin: 50% var(--navigator-tilt-origin-y, 50%);
+  transform-style: preserve-3d;
+  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+  backface-visibility: hidden;
+}
+
+.reader-stage.navigator-dragging .portion-pane-current .portion-sheet {
+  transform:
+    translateX(var(--navigator-drag-shift-x, -30px))
+    perspective(2000px)
+    rotateY(var(--navigator-tilt-y, 0deg));
+  transition-duration: 200ms;
+}
+
+.reader-stage.navigator-dragging {
+  --navigator-drag-shift-x: -30px;
 }
 
 .continuation-bridge-shell {
@@ -670,7 +751,23 @@ button {
   top: 0;
   left: 0;
   z-index: 5;
+  line-height: 0;
   pointer-events: none;
+}
+
+.continuation-bridge-drag-offset {
+  display: inline-block;
+  opacity: 1;
+  transform: translateX(var(--navigator-drag-shift-x, 0px));
+  transition:
+    opacity 140ms ease,
+    transform 200ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: opacity, transform;
+}
+
+.reader-stage.navigator-dragging .continuation-bridge-drag-offset {
+  opacity: 0;
+  transform: translateX(var(--navigator-drag-shift-x, -30px));
 }
 
 .reader-stage.transitioning .continuation-bridge-shell {
@@ -694,16 +791,17 @@ button {
 .continuation-bridge {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 5px;
+  height: 5px;
 }
 
 .continuation-bridge span {
-  width: 8px;
-  height: 8px;
+  width: 5px;
+  height: 5px;
   border-radius: 999px;
   background: var(--accent);
-  opacity: 0.72;
-  box-shadow: 0 0 12px rgba(0, 0, 0, 0.14);
+  opacity: 0.9;
+  box-shadow: none;
 }
 
 .reader-block {
@@ -785,6 +883,20 @@ button {
   text-decoration-thickness: 0.11em;
   text-underline-offset: 0.16em;
   text-decoration-color: rgba(240, 165, 92, 0.86);
+}
+
+.annotation-live-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.annotation-live-rect {
+  position: absolute;
+  border-radius: 8px;
+  background: rgba(240, 165, 92, 0.16);
+  box-shadow: inset 0 0 0 1px rgba(240, 165, 92, 0.28);
 }
 
 .annotation-sheet-backdrop {
@@ -887,6 +999,14 @@ button {
   border-radius: 999px;
   background: var(--accent);
   opacity: 0.72;
+}
+
+.scene-break-boundary {
+  width: 56px;
+  max-width: none;
+  margin: 0;
+  opacity: 0.88;
+  box-shadow: 0 0 12px rgba(0, 0, 0, 0.14);
 }
 
 .image-block {
@@ -1063,9 +1183,9 @@ button {
   }
 
   .chapter-progress {
-    top: calc(var(--safe-top) + 104px);
-    right: calc(10px + var(--safe-right));
-    bottom: calc(42px + var(--safe-bottom));
+    top: 0;
+    right: var(--safe-right);
+    bottom: 0;
   }
 
   .upload-card h1 {

@@ -3,6 +3,7 @@ import type { CSSProperties } from 'react';
 import type { CanonicalBook } from '../../types/book';
 import type {
   PortionBlock,
+  ReaderRectSnapshot,
   ReaderPortion,
   ReaderSettings,
   TextAnnotation,
@@ -12,6 +13,11 @@ import { PortionView } from './PortionView';
 import { SettingsPanel } from './SettingsPanel';
 import { READER_CHROME } from '../hooks/useReaderViewport';
 import { findPortionIndexForAnchor } from '../../lib/portioning/paginateBook';
+import { clampAnchorToBook } from '../../lib/reader/anchors';
+import {
+  captureRangeRectSnapshots,
+  measureAnnotationRectSnapshots
+} from '../../lib/reader/contentRects';
 
 interface ReaderScreenProps {
   book: CanonicalBook;
@@ -62,14 +68,32 @@ interface SelectionDraft {
   endOffset: number;
   sentenceIndex: number;
   selectedText: string;
+  rects: ReaderRectSnapshot[];
+}
+
+interface ProgressDragState {
+  pointerId: number;
+  startY: number;
+  startItemCenter: number;
+  currentIndex: number;
+  moved: boolean;
+}
+
+interface ProgressTilt {
+  rotateY: number;
+  rotateZ: number;
+  originY: number;
 }
 
 const TAP_TOLERANCE = 10;
 const SNAP_THRESHOLD_RATIO = 0.18;
 const SNAP_THRESHOLD_PX = 84;
 const SNAP_ANIMATION_MS = 240;
-const CHAPTER_TRACK_PADDING_PX = 6;
-const CHAPTER_TRACK_GAP_PX = 6;
+const PORTION_NAV_ITEM_HEIGHT_PX = 4;
+const CHAPTER_TRACK_GAP_PX = 3;
+const CONTINUATION_BRIDGE_WIDTH_PX = 25;
+const PROGRESS_TILT_MAX_Y_DEG = 34;
+const PROGRESS_TILT_MAX_Z_DEG = 7;
 const LONG_PRESS_MS = 320;
 const SELECTION_SETTLE_MS = 260;
 
@@ -83,6 +107,14 @@ function makeAnnotationId(): string {
   }
 
   return `annotation-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function getNeutralProgressTilt(): ProgressTilt {
+  return {
+    rotateY: 0,
+    rotateZ: 0,
+    originY: 50
+  };
 }
 
 function BookmarkIcon() {
@@ -180,7 +212,7 @@ function ContinuationBridge() {
 }
 
 function SceneBreakBridge() {
-  return <div className="scene-break" aria-hidden="true" />;
+  return <div className="scene-break scene-break-boundary" aria-hidden="true" />;
 }
 
 function ContinuationBridgeShell({
@@ -230,7 +262,9 @@ function ContinuationBridgeShell({
       }`}
       style={style}
     >
-      {children ?? <ContinuationBridge />}
+      <div className="continuation-bridge-drag-offset">
+        {children ?? <ContinuationBridge />}
+      </div>
     </div>
   );
 }
@@ -261,10 +295,18 @@ export function ReaderScreen({
   const [snapDirection, setSnapDirection] = useState<SnapDirection | null>(null);
   const [transitionEnabled, setTransitionEnabled] = useState(false);
   const [progressTrackHeight, setProgressTrackHeight] = useState(0);
+  const [progressDragOffset, setProgressDragOffset] = useState(0);
+  const [progressDragging, setProgressDragging] = useState(false);
+  const [progressTilt, setProgressTilt] = useState<ProgressTilt>({
+    rotateY: 0,
+    rotateZ: 0,
+    originY: 50
+  });
   const [selectionEnabled, setSelectionEnabled] = useState(false);
   const [selectionDraft, setSelectionDraft] = useState<SelectionDraft | null>(null);
   const [annotationNote, setAnnotationNote] = useState('');
   const [activeAnnotation, setActiveAnnotation] = useState<TextAnnotation | null>(null);
+  const [activeAnnotationRects, setActiveAnnotationRects] = useState<ReaderRectSnapshot[]>([]);
   const [sheetHeights, setSheetHeights] = useState({
     previous: 0,
     current: 0,
@@ -277,6 +319,7 @@ export function ReaderScreen({
   const stageElementRef = useRef<HTMLElement | null>(null);
   const selectionFinalizeTimeoutRef = useRef<number | null>(null);
   const progressPointerIdRef = useRef<number | null>(null);
+  const progressDragRef = useRef<ProgressDragState | null>(null);
   const snapTimeoutRef = useRef<number | null>(null);
   const dragAnimationFrameRef = useRef<number | null>(null);
   const pendingDragOffsetRef = useRef(0);
@@ -403,7 +446,8 @@ export function ReaderScreen({
       startOffset: normalizedStart,
       endOffset: normalizedEnd,
       sentenceIndex,
-      selectedText
+      selectedText,
+      rects: captureRangeRectSnapshots(range, currentPane)
     };
   }
 
@@ -649,6 +693,28 @@ export function ReaderScreen({
   }, [readSelectionDraftFromDom, selectionDraft, selectionEnabled]);
 
   useEffect(() => {
+    const currentPane = currentPaneRef.current;
+    if (!activeAnnotation || !currentPane) {
+      setActiveAnnotationRects([]);
+      return;
+    }
+
+    const updateRects = () => {
+      setActiveAnnotationRects(measureAnnotationRectSnapshots(currentPane, activeAnnotation));
+    };
+
+    updateRects();
+    const observer = new ResizeObserver(() => updateRects());
+    observer.observe(currentPane);
+    window.addEventListener('resize', updateRects);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', updateRects);
+    };
+  }, [activeAnnotation, portion?.id, portionIndex, settings.fontSize, settings.horizontalPadding, settings.lineHeight]);
+
+  useEffect(() => {
     const measure = () => {
       const readHeight = (pane: HTMLDivElement | null) =>
         pane?.querySelector<HTMLElement>('.portion-sheet')?.getBoundingClientRect().height ?? 0;
@@ -689,35 +755,38 @@ export function ReaderScreen({
     viewport?.contentHeight
   ]);
 
-  const chapterSegments = useMemo(() => {
-    const spans = new Map<string, { start: number; end: number }>();
-    portions.forEach((readerPortion, index) => {
-      const existing = spans.get(readerPortion.sectionId);
-      if (existing) {
-        existing.end = index;
-        return;
+  const portionNavigation = useMemo(() => {
+    let topPx = 0;
+    let previousSectionId: string | null = null;
+    const items = portions.map((readerPortion, index) => {
+      if (previousSectionId !== null && previousSectionId !== readerPortion.sectionId) {
+        topPx += CHAPTER_TRACK_GAP_PX;
       }
-      spans.set(readerPortion.sectionId, { start: index, end: index });
+
+      const item = {
+        index,
+        sectionId: readerPortion.sectionId,
+        label: readerPortion.sectionLabel,
+        topPx,
+        heightPx: PORTION_NAV_ITEM_HEIGHT_PX
+      };
+      topPx += PORTION_NAV_ITEM_HEIGHT_PX;
+      previousSectionId = readerPortion.sectionId;
+      return item;
     });
 
-    return book.sections
-      .map((section) => {
-        const span = spans.get(section.id);
-        if (!span) {
-          return null;
-        }
-
-        return {
-          sectionId: section.id,
-          sectionIndex: section.index,
-          label: section.label,
-          start: span.start,
-          end: span.end,
-          portionCount: span.end - span.start + 1
-        };
-      })
-      .filter((value): value is NonNullable<typeof value> => Boolean(value));
-  }, [book.sections, portions]);
+    return {
+      items,
+      totalHeightPx: topPx
+    };
+  }, [portions]);
+  const portionNavigationItemByIndex = useMemo(() => {
+    const next = new Map<number, (typeof portionNavigation.items)[number]>();
+    portionNavigation.items.forEach((item) => {
+      next.set(item.index, item);
+    });
+    return next;
+  }, [portionNavigation.items]);
   useEffect(() => {
     const node = progressTrackRef.current;
     if (!node) {
@@ -732,27 +801,7 @@ export function ReaderScreen({
     const observer = new ResizeObserver(() => update());
     observer.observe(node);
     return () => observer.disconnect();
-  }, [chapterSegments.length]);
-  const chapterTrackMetrics = useMemo(() => {
-    const gapCount = Math.max(0, chapterSegments.length - 1);
-    const usableHeight = Math.max(
-      0,
-      progressTrackHeight - CHAPTER_TRACK_PADDING_PX * 2 - CHAPTER_TRACK_GAP_PX * gapCount
-    );
-
-    let currentTop = CHAPTER_TRACK_PADDING_PX;
-    return chapterSegments.map((segment, index) => {
-      const height =
-        portionCount > 0 ? (usableHeight * segment.portionCount) / portionCount : 0;
-      const metric = {
-        ...segment,
-        topPx: currentTop,
-        heightPx: height
-      };
-      currentTop += height + (index < chapterSegments.length - 1 ? CHAPTER_TRACK_GAP_PX : 0);
-      return metric;
-    });
-  }, [chapterSegments, portionCount, progressTrackHeight]);
+  }, [portionNavigation.items.length]);
   const stageHeight = stageRef.current?.clientHeight ?? 0;
   const fallbackSheetHeight = viewport
     ? viewport.contentHeight + READER_CHROME.portionEdgePadding * 2
@@ -857,7 +906,6 @@ export function ReaderScreen({
     snapDirection,
     stageHeight
   ]);
-  const focusedSectionId = portions[focusedPortionIndex]?.sectionId ?? portion?.sectionId ?? null;
   const annotationsByBlock = useMemo(() => {
     const next = new Map<string, TextAnnotation[]>();
     annotations.forEach((annotation) => {
@@ -880,23 +928,18 @@ export function ReaderScreen({
     });
     return next;
   }, [annotations, portions]);
-  const focusedSegmentMetric = useMemo(
-    () =>
-      chapterTrackMetrics.find((segment) => segment.sectionId === focusedSectionId) ?? null,
-    [chapterTrackMetrics, focusedSectionId]
+  const activeNavigationIndex = clamp(
+    focusedPortionIndex,
+    0,
+    Math.max(0, portionNavigation.items.length - 1)
   );
-  const currentMarkerTop = useMemo(() => {
-    if (!focusedSegmentMetric) {
-      return '50%';
-    }
-
-    const offsetWithinSegment = focusedPortionIndex - focusedSegmentMetric.start;
-    const localRatio =
-      focusedSegmentMetric.portionCount <= 0
-        ? 0.5
-        : (offsetWithinSegment + 0.5) / focusedSegmentMetric.portionCount;
-    return `${focusedSegmentMetric.topPx + focusedSegmentMetric.heightPx * localRatio}px`;
-  }, [focusedPortionIndex, focusedSegmentMetric]);
+  const activeNavigationItem = portionNavigationItemByIndex.get(activeNavigationIndex);
+  const navigationBaseOffset =
+    progressTrackHeight > 0 && activeNavigationItem
+      ? progressTrackHeight / 2 -
+        (activeNavigationItem.topPx + activeNavigationItem.heightPx / 2)
+      : 0;
+  const navigationStripOffset = navigationBaseOffset + progressDragOffset;
   const continuationStyles = useMemo(() => {
     const stageWidth = stageRef.current?.clientWidth ?? viewport?.width ?? 0;
     if (stageHeight <= 0 || stageWidth <= 0 || !portion) {
@@ -916,7 +959,7 @@ export function ReaderScreen({
     const draggingBackward = isDragging && dragOffset > 0;
     const animatingForward = transitionEnabled && snapDirection === 'forward';
     const animatingBackward = transitionEnabled && snapDirection === 'backward';
-    const bridgeHalfWidth = 20;
+    const bridgeHalfWidth = CONTINUATION_BRIDGE_WIDTH_PX / 2;
     const markerInsetY = READER_CHROME.portionEdgePadding / 2;
     const sheetWidth = viewport?.contentWidth ?? stageWidth;
     const sheetLeft = Math.max(0, (stageWidth - sheetWidth) / 2);
@@ -1112,75 +1155,85 @@ export function ReaderScreen({
     return nextPortion ? forwardProgress : 0;
   }
 
-  function resolvePortionIndexFromClientY(clientY: number): number | null {
-    const track = progressTrackRef.current;
-    if (!track || portionCount <= 0 || chapterTrackMetrics.length === 0) {
+  function findClosestNavigationIndex(targetCenter: number): number | null {
+    if (portionNavigation.items.length === 0) {
       return null;
     }
 
-    const rect = track.getBoundingClientRect();
-    if (rect.height <= 0) {
-      return null;
-    }
+    let closest = portionNavigation.items[0];
+    let closestDistance = Math.abs(
+      closest.topPx + closest.heightPx / 2 - targetCenter
+    );
 
-    const localY = clamp(clientY - rect.top, 0, rect.height);
-    let matchingSegment = chapterTrackMetrics.find((segment) => {
-      const start = segment.topPx;
-      const end = segment.topPx + segment.heightPx;
-      return localY >= start && localY <= end;
-    });
-
-    if (!matchingSegment) {
-      if (localY <= chapterTrackMetrics[0].topPx) {
-        matchingSegment = chapterTrackMetrics[0];
-      } else {
-        for (let index = 0; index < chapterTrackMetrics.length - 1; index += 1) {
-          const current = chapterTrackMetrics[index];
-          const next = chapterTrackMetrics[index + 1];
-          const currentEnd = current.topPx + current.heightPx;
-
-          if (localY >= currentEnd && localY <= next.topPx) {
-            const midpoint = (currentEnd + next.topPx) / 2;
-            matchingSegment = localY <= midpoint ? current : next;
-            break;
-          }
-        }
+    for (let index = 1; index < portionNavigation.items.length; index += 1) {
+      const item = portionNavigation.items[index];
+      const distance = Math.abs(item.topPx + item.heightPx / 2 - targetCenter);
+      if (distance >= closestDistance) {
+        continue;
       }
 
-      if (!matchingSegment) {
-        matchingSegment = chapterTrackMetrics[chapterTrackMetrics.length - 1];
-      }
+      closest = item;
+      closestDistance = distance;
     }
 
-    if (!matchingSegment || matchingSegment.portionCount <= 0) {
-      return null;
-    }
-
-    const localSegmentY = clamp(
-      localY - matchingSegment.topPx,
-      0,
-      Math.max(matchingSegment.heightPx, 0.0001)
-    );
-    const localRatio = clamp(
-      localSegmentY / Math.max(matchingSegment.heightPx, 0.0001),
-      0,
-      0.999999
-    );
-    const localPortionIndex = Math.floor(localRatio * matchingSegment.portionCount);
-    return clamp(
-      matchingSegment.start + localPortionIndex,
-      0,
-      portionCount - 1
-    );
+    return closest.index;
   }
 
-  function updatePortionFromProgress(clientY: number) {
-    const nextIndex = resolvePortionIndexFromClientY(clientY);
-    if (nextIndex === null) {
-      return;
+  function getNavigationOffsetForIndex(index: number): number {
+    const item = portionNavigationItemByIndex.get(index);
+    if (!item || progressTrackHeight <= 0) {
+      return 0;
     }
 
-    onJumpToPortion(nextIndex);
+    return progressTrackHeight / 2 - (item.topPx + item.heightPx / 2);
+  }
+
+  function getProgressTilt(clientX: number, clientY: number, deltaY: number): ProgressTilt {
+    const viewportWidth = Math.max(window.innerWidth || viewport?.width || 1, 1);
+    const viewportHeight = Math.max(window.innerHeight || viewport?.height || 1, 1);
+    const horizontalRatio = clamp((clientX / viewportWidth) * 1.25, 0, 1);
+    const verticalDragRatio = clamp(-deltaY / 95, -1, 1);
+
+    return {
+      rotateY: horizontalRatio * PROGRESS_TILT_MAX_Y_DEG,
+      rotateZ: -verticalDragRatio * PROGRESS_TILT_MAX_Z_DEG,
+      originY: clamp((clientY / viewportHeight) * 100, 12, 88)
+    };
+  }
+
+  function updateProgressDragFromPointer(
+    event: React.PointerEvent<HTMLDivElement>
+  ): number | null {
+    const dragState = progressDragRef.current;
+    if (
+      progressPointerIdRef.current !== event.pointerId ||
+      !dragState ||
+      dragState.pointerId !== event.pointerId
+    ) {
+      return null;
+    }
+
+    const deltaY = event.clientY - dragState.startY;
+    setProgressTilt(getProgressTilt(event.clientX, event.clientY, deltaY));
+    if (Math.abs(deltaY) > 1) {
+      dragState.moved = true;
+    }
+
+    const targetCenter = dragState.startItemCenter - deltaY;
+    const nextIndex = findClosestNavigationIndex(targetCenter);
+    if (nextIndex === null) {
+      return null;
+    }
+
+    const dragVisualOffset = progressTrackHeight / 2 - dragState.startItemCenter + deltaY;
+    setProgressDragOffset(dragVisualOffset - getNavigationOffsetForIndex(nextIndex));
+
+    if (dragState.moved && nextIndex !== dragState.currentIndex) {
+      dragState.currentIndex = nextIndex;
+      onJumpToPortion(nextIndex);
+    }
+
+    return nextIndex;
   }
 
   function handleSaveAnnotation() {
@@ -1191,12 +1244,19 @@ export function ReaderScreen({
     onSaveAnnotation({
       id: makeAnnotationId(),
       fingerprint: book.fingerprint,
+      locator: clampAnchorToBook(book, {
+        blockId: selectionDraft.blockId,
+        blockOrder: selectionDraft.blockOrder,
+        sentenceIndex: selectionDraft.sentenceIndex,
+        lineOffset: 0
+      }),
       blockId: selectionDraft.blockId,
       blockOrder: selectionDraft.blockOrder,
       startOffset: selectionDraft.startOffset,
       endOffset: selectionDraft.endOffset,
       sentenceIndex: selectionDraft.sentenceIndex,
       selectedText: selectionDraft.selectedText,
+      rects: selectionDraft.rects,
       note: annotationNote.trim(),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
@@ -1376,18 +1436,37 @@ export function ReaderScreen({
   function handleProgressPointerDown(event: React.PointerEvent<HTMLDivElement>) {
     event.preventDefault();
     event.stopPropagation();
+    if (portionNavigation.items.length === 0 || progressTrackHeight <= 0) {
+      return;
+    }
+
+    const activeItem = portionNavigationItemByIndex.get(activeNavigationIndex);
+    if (!activeItem) {
+      return;
+    }
+
     progressPointerIdRef.current = event.pointerId;
+    progressDragRef.current = {
+      pointerId: event.pointerId,
+      startY: event.clientY,
+      startItemCenter: activeItem.topPx + activeItem.heightPx / 2,
+      currentIndex: activeNavigationIndex,
+      moved: false
+    };
+    setProgressDragging(true);
+    setProgressDragOffset(0);
+    setProgressTilt(getProgressTilt(event.clientX, event.clientY, 0));
     event.currentTarget.setPointerCapture(event.pointerId);
-    updatePortionFromProgress(event.clientY);
   }
 
   function handleProgressPointerMove(event: React.PointerEvent<HTMLDivElement>) {
-    if (progressPointerIdRef.current !== event.pointerId) {
+    if (progressPointerIdRef.current !== event.pointerId || !progressDragRef.current) {
       return;
     }
 
     event.preventDefault();
-    updatePortionFromProgress(event.clientY);
+    event.stopPropagation();
+    updateProgressDragFromPointer(event);
   }
 
   function handleProgressPointerEnd(event: React.PointerEvent<HTMLDivElement>) {
@@ -1396,8 +1475,16 @@ export function ReaderScreen({
     }
 
     event.preventDefault();
+    event.stopPropagation();
+    updateProgressDragFromPointer(event);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
     progressPointerIdRef.current = null;
-    updatePortionFromProgress(event.clientY);
+    progressDragRef.current = null;
+    setProgressDragging(false);
+    setProgressDragOffset(0);
+    setProgressTilt(getNeutralProgressTilt());
   }
 
   return (
@@ -1406,7 +1493,7 @@ export function ReaderScreen({
       className={`reader-shell theme-${settings.theme}`}
     >
       <header className="reader-header">
-        <div>
+        <div className="reader-header-copy">
           <p className="reader-kicker">{book.metadata.creator ?? 'Local EPUB'}</p>
           <h1>{book.metadata.title}</h1>
           <p className="reader-section-label">{portion?.sectionLabel}</p>
@@ -1428,62 +1515,56 @@ export function ReaderScreen({
       <aside className="chapter-progress" aria-label="Reading progress by chapter">
         <div
           ref={progressTrackRef}
-          className="chapter-progress-track"
+          className={`chapter-progress-track ${progressDragging ? 'dragging' : ''}`}
           onPointerDown={handleProgressPointerDown}
           onPointerMove={handleProgressPointerMove}
           onPointerUp={handleProgressPointerEnd}
           onPointerCancel={handleProgressPointerEnd}
         >
-          {Array.from(annotationPortionIndexes).map((index) => {
-            const segment = chapterTrackMetrics.find(
-              (entry) => index >= entry.start && index <= entry.end
-            );
-            if (!segment) {
-              return null;
-            }
+          <div
+            className="chapter-progress-strip"
+            style={{
+              height: `${portionNavigation.totalHeightPx}px`,
+              transform: `translateY(${navigationStripOffset}px)`
+            }}
+            aria-hidden="true"
+          >
+            {Array.from(annotationPortionIndexes).map((index) => {
+              const item = portionNavigationItemByIndex.get(index);
+              if (!item) {
+                return null;
+              }
 
-            const localRatio =
-              segment.portionCount <= 0
-                ? 0.5
-                : (index - segment.start + 0.5) / segment.portionCount;
-            return (
-              <div
-                key={`annotation-marker-${index}`}
-                className="chapter-progress-annotation"
-                style={{ top: `${segment.topPx + segment.heightPx * localRatio}px` }}
-                aria-hidden="true"
-              />
-            );
-          })}
-          {chapterSegments.map((segment) => {
-            const isActive =
-              focusedSectionId != null &&
-              focusedPortionIndex >= segment.start &&
-              focusedPortionIndex <= segment.end &&
-              focusedSectionId === segment.sectionId;
-            const metric = chapterTrackMetrics.find(
-              (entry) => entry.sectionId === segment.sectionId
-            );
-            return (
-              <div
-                key={segment.sectionId}
-                className={`chapter-progress-segment ${isActive ? 'active' : ''}`}
-                style={
-                  metric
-                    ? {
-                        top: `${metric.topPx}px`,
-                        height: `${metric.heightPx}px`
-                      }
-                    : undefined
-                }
-                title={segment.label}
-                aria-hidden="true"
-              />
-            );
-          })}
+              return (
+                <div
+                  key={`annotation-marker-${index}`}
+                  className="chapter-progress-annotation"
+                  style={{ top: `${item.topPx + item.heightPx / 2}px` }}
+                />
+              );
+            })}
+            {portionNavigation.items.map((item) => {
+              const stateClass =
+                item.index === activeNavigationIndex
+                  ? 'active'
+                  : item.index < activeNavigationIndex
+                    ? 'completed'
+                    : 'upcoming';
+              return (
+                <div
+                  key={portions[item.index]?.id ?? `portion-nav-${item.index}`}
+                  className={`chapter-progress-segment ${stateClass}`}
+                  style={{
+                    top: `${item.topPx}px`,
+                    height: `${item.heightPx}px`
+                  }}
+                  title={item.label}
+                />
+              );
+            })}
+          </div>
           <div
             className="chapter-progress-marker"
-            style={{ top: currentMarkerTop }}
             aria-hidden="true"
           />
         </div>
@@ -1493,10 +1574,15 @@ export function ReaderScreen({
         ref={stageRef}
         className={`reader-stage ${isDragging ? 'dragging' : ''} ${
           snapDirection ? `snapping-${snapDirection}` : ''
-        } ${transitionEnabled ? 'transitioning' : ''}`}
+        } ${transitionEnabled ? 'transitioning' : ''} ${
+          progressDragging ? 'navigator-dragging' : ''
+        }`}
         style={{
           '--portion-width': viewport ? `${viewport.contentWidth}px` : '100%',
           '--portion-edge-padding': `${READER_CHROME.portionEdgePadding}px`,
+          '--navigator-tilt-y': `${progressTilt.rotateY}deg`,
+          '--navigator-tilt-z': `${progressTilt.rotateZ}deg`,
+          '--navigator-tilt-origin-y': `${progressTilt.originY}%`,
           touchAction: selectionEnabled ? 'auto' : 'none'
         } as CSSProperties}
         onPointerDown={handlePointerDown}
@@ -1582,14 +1668,32 @@ export function ReaderScreen({
             }}
           >
             {portion ? (
-              <PortionView
-                portion={portion}
-                settings={settings}
-                annotationsByBlock={annotationsByBlock}
-                onAnnotationPress={handleAnnotationPress}
-                hideLeadingBoundarySceneBreak={hasSceneBreakBoundary(previousPortion, portion)}
-                hideTrailingBoundarySceneBreak={endsWithSceneBreak(portion)}
-              />
+              <>
+                <PortionView
+                  portion={portion}
+                  settings={settings}
+                  annotationsByBlock={annotationsByBlock}
+                  onAnnotationPress={handleAnnotationPress}
+                  hideLeadingBoundarySceneBreak={hasSceneBreakBoundary(previousPortion, portion)}
+                  hideTrailingBoundarySceneBreak={endsWithSceneBreak(portion)}
+                />
+                {activeAnnotationRects.length > 0 ? (
+                  <div className="annotation-live-overlay" aria-hidden="true">
+                    {activeAnnotationRects.map((rect, index) => (
+                      <div
+                        key={`annotation-live-rect-${index}`}
+                        className="annotation-live-rect"
+                        style={{
+                          left: `${rect.x}%`,
+                          top: `${rect.y}%`,
+                          width: `${rect.width}%`,
+                          height: `${rect.height}%`
+                        }}
+                      />
+                    ))}
+                  </div>
+                ) : null}
+              </>
             ) : null}
           </div>
           <div

@@ -28,6 +28,14 @@ function getSection(book: CanonicalBook, sectionIndex: number) {
   return book.sections[sectionIndex];
 }
 
+function excerptForBlock(block: BookBlock, sentenceIndex: number): string | undefined {
+  if (!('sentences' in block)) {
+    return undefined;
+  }
+
+  return block.sentences[sentenceIndex]?.text?.trim().slice(0, 160) || block.text.trim().slice(0, 160);
+}
+
 function getBlock(book: CanonicalBook, cursor: Cursor): BookBlock | null {
   const section = getSection(book, cursor.sectionIndex);
   return section?.blocks[cursor.blockIndex] ?? null;
@@ -78,12 +86,27 @@ function getNextTextCursor(book: CanonicalBook, cursor: Cursor): Cursor | null {
   return null;
 }
 
-function makeAnchor(block: BookBlock, sentenceIndex: number, lineOffset: number): ReaderAnchor {
+function makeAnchor(
+  book: CanonicalBook,
+  cursor: Cursor,
+  block: BookBlock,
+  sentenceIndex: number,
+  lineOffset: number
+): ReaderAnchor {
+  const section = getSection(book, cursor.sectionIndex);
+  const progression = book.totalBlocks > 1 ? block.order / (book.totalBlocks - 1) : 0;
+
   return {
+    locator: `${section?.href ?? cursor.sectionIndex}#${block.id}:${sentenceIndex}:${lineOffset}`,
+    sectionId: section?.id,
+    sectionIndex: cursor.sectionIndex,
+    sectionHref: section?.href,
     blockId: block.id,
     blockOrder: block.order,
     sentenceIndex,
-    lineOffset
+    lineOffset,
+    progression,
+    excerpt: excerptForBlock(block, sentenceIndex)
   };
 }
 
@@ -104,24 +127,6 @@ function getFirstCursor(book: CanonicalBook): Cursor {
     sentenceIndex: 0,
     lineOffset: 0
   };
-}
-
-function locateCursorByAnchor(book: CanonicalBook, anchor: ReaderAnchor): Cursor | null {
-  for (let sectionIndex = 0; sectionIndex < book.sections.length; sectionIndex += 1) {
-    const section = book.sections[sectionIndex];
-    for (let blockIndex = 0; blockIndex < section.blocks.length; blockIndex += 1) {
-      const block = section.blocks[blockIndex];
-      if (block.id === anchor.blockId) {
-        return {
-          sectionIndex,
-          blockIndex,
-          sentenceIndex: anchor.sentenceIndex,
-          lineOffset: anchor.lineOffset
-        };
-      }
-    }
-  }
-  return null;
 }
 
 function findMaxSentenceFit(
@@ -315,12 +320,10 @@ export async function paginateBook(
   book: CanonicalBook,
   viewport: ViewportMetrics,
   settings: ReaderSettings,
-  startAnchor?: ReaderAnchor
+  _startAnchor?: ReaderAnchor
 ): Promise<PaginationResult> {
   const portions: ReaderPortion[] = [];
-  let cursor: Cursor | null = startAnchor
-    ? locateCursorByAnchor(book, startAnchor) ?? getFirstCursor(book)
-    : getFirstCursor(book);
+  let cursor: Cursor | null = getFirstCursor(book);
   let portionIndex = 0;
   let safety = 0;
 
@@ -337,7 +340,7 @@ export async function paginateBook(
     }
 
     const portionBlocks: PortionBlock[] = [];
-    const start = makeAnchor(currentBlock, cursor.sentenceIndex, cursor.lineOffset);
+    const start = makeAnchor(book, cursor, currentBlock, cursor.sentenceIndex, cursor.lineOffset);
     let remainingHeight = viewport.contentHeight;
     let workingCursor: Cursor | null = { ...cursor };
     let lastAnchor = start;
@@ -373,7 +376,7 @@ export async function paginateBook(
           blockId: block.id
         });
         remainingHeight -= needed;
-        lastAnchor = makeAnchor(block, 0, 0);
+        lastAnchor = makeAnchor(book, workingCursor, block, 0, 0);
         workingCursor = nextBlockCursor(book, workingCursor);
         continue;
       }
@@ -397,7 +400,7 @@ export async function paginateBook(
           caption: block.caption
         });
         remainingHeight -= Math.max(120, maxHeight) + typography.marginTop + typography.marginBottom;
-        lastAnchor = makeAnchor(block, 0, 0);
+        lastAnchor = makeAnchor(book, workingCursor, block, 0, 0);
         workingCursor = nextBlockCursor(book, workingCursor);
         continue;
       }
@@ -418,7 +421,13 @@ export async function paginateBook(
             ? oversized.rendered.lines.length *
               getBlockTypography(block.kind, settings).lineHeightPx
             : 0;
-        lastAnchor = makeAnchor(textBlock, textBlock.sentences[workingCursor.sentenceIndex].index, oversized.nextLineOffset);
+        lastAnchor = makeAnchor(
+          book,
+          workingCursor,
+          textBlock,
+          textBlock.sentences[workingCursor.sentenceIndex].index,
+          oversized.nextLineOffset
+        );
         if (oversized.isFinished) {
           if (workingCursor.sentenceIndex + 1 < textBlock.sentences.length) {
             workingCursor = {
@@ -474,7 +483,7 @@ export async function paginateBook(
         );
         portionBlocks.push(rendered);
         remainingHeight -= measurement.height;
-        lastAnchor = makeAnchor(textBlock, chosenSentence - 1, 0);
+        lastAnchor = makeAnchor(book, workingCursor, textBlock, chosenSentence - 1, 0);
         if (chosenSentence < textBlock.sentences.length) {
           workingCursor = {
             ...workingCursor,
@@ -515,7 +524,13 @@ export async function paginateBook(
       );
       portionBlocks.push(oversized.rendered);
       remainingHeight = 0;
-      lastAnchor = makeAnchor(textBlock, workingCursor.sentenceIndex, oversized.nextLineOffset);
+      lastAnchor = makeAnchor(
+        book,
+        workingCursor,
+        textBlock,
+        workingCursor.sentenceIndex,
+        oversized.nextLineOffset
+      );
       workingCursor = oversized.isFinished
         ? workingCursor.sentenceIndex + 1 < textBlock.sentences.length
           ? {

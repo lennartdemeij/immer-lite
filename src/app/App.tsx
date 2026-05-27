@@ -11,11 +11,14 @@ import { paginateBook } from '../lib/portioning/paginateBook';
 import {
   deleteAnnotation,
   getAllAnnotations,
+  hydratePersistenceCaches,
   loadAnnotations,
+  loadLatestStoredPublication,
   loadSettings,
   loadStoredPosition,
   replaceAllAnnotations,
   saveAnnotation,
+  saveOpenedPublication,
   saveSettings,
   saveStoredPosition,
   DEFAULT_SETTINGS
@@ -212,7 +215,7 @@ export function App() {
   const canGoPrevious = currentIndex > 0;
   const canGoNext = currentIndex < pagination.portions.length - 1;
 
-  async function openBookFile(file: File) {
+  async function openBookFile(file: File, persist = true) {
     setError(null);
     setUploading(true);
 
@@ -226,6 +229,9 @@ export function App() {
       setPagination({ portions: [] });
       setAnnotations(loadAnnotations(loaded.fingerprint));
       setBook(loaded);
+      if (persist) {
+        void saveOpenedPublication(file, loaded.fingerprint);
+      }
     } catch (loadError) {
       setError(
         loadError instanceof Error
@@ -238,7 +244,7 @@ export function App() {
   }
 
   async function handleFileSelected(file: File) {
-    await openBookFile(file);
+    await openBookFile(file, true);
   }
 
   useEffect(() => {
@@ -248,8 +254,21 @@ export function App() {
 
     defaultLoadAttemptedRef.current = true;
 
-    const loadDefaultBook = async () => {
+    const loadInitialBook = async () => {
       setUploading(true);
+      const { settings: hydratedSettings } = await hydratePersistenceCaches();
+      setSettings((current) =>
+        JSON.stringify(current) === JSON.stringify(hydratedSettings)
+          ? current
+          : hydratedSettings
+      );
+
+      const storedPublication = await loadLatestStoredPublication();
+      if (storedPublication) {
+        await openBookFile(storedPublication, true);
+        return;
+      }
+
       const candidates = getDefaultBookCandidates();
       let lastError: Error | null = null;
 
@@ -264,7 +283,8 @@ export function App() {
           await openBookFile(
             new File([blob], 'book.epub', {
               type: blob.type || 'application/epub+zip'
-            })
+            }),
+            false
           );
           return;
         } catch (loadError) {
@@ -279,7 +299,7 @@ export function App() {
       setError(lastError?.message ?? 'Could not open the default EPUB.');
     };
 
-    void loadDefaultBook();
+    void loadInitialBook();
   }, [book]);
 
   useEffect(() => {

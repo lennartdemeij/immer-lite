@@ -1,4 +1,4 @@
-import type { CanonicalBook } from '../../types/book';
+import type { CanonicalBook, TextBlock } from '../../types/book';
 import type { ReaderAnchor, ReaderPortion } from '../../types/reader';
 import { findPortionIndexForAnchor } from '../portioning/paginateBook';
 
@@ -46,7 +46,7 @@ function normalizeForMatching(value: string): string {
 
 function isTextualBlock(
   block: CanonicalBook['sections'][number]['blocks'][number]
-): block is CanonicalBook['sections'][number]['blocks'][number] & { text: string; sentences: unknown[] } {
+): block is TextBlock {
   return (
     block.kind === 'heading' ||
     block.kind === 'paragraph' ||
@@ -58,12 +58,25 @@ function isTextualBlock(
 function getAnchorForSection(section: CanonicalBook['sections'][number]): ReaderAnchor {
   const firstTextualBlock = section.blocks.find(isTextualBlock);
   const firstBlock = firstTextualBlock ?? section.blocks[0];
+  if (!firstBlock) {
+    throw new Error(`Section "${section.id}" does not contain any blocks.`);
+  }
+  const firstBlockText = isTextualBlock(firstBlock) ? firstBlock.text.trim().slice(0, 160) : undefined;
+  const excerpt =
+    firstTextualBlock?.sentences[0]?.text?.trim().slice(0, 160) ??
+    firstBlockText;
 
   return {
+    locator: `${section.href}#${firstBlock.id}:0:0`,
+    sectionId: section.id,
+    sectionIndex: section.index,
+    sectionHref: section.href,
     blockId: firstBlock.id,
     blockOrder: firstBlock.order,
     sentenceIndex: 0,
-    lineOffset: 0
+    lineOffset: 0,
+    progression: 0,
+    excerpt
   };
 }
 
@@ -163,12 +176,45 @@ export function clampAnchorToBook(book: CanonicalBook, anchor?: ReaderAnchor): R
     for (const block of section.blocks) {
       if (block.id === anchor.blockId) {
         return {
+          locator: `${section.href}#${block.id}:${anchor.sentenceIndex}:${anchor.lineOffset}`,
+          sectionId: section.id,
+          sectionIndex: section.index,
+          sectionHref: section.href,
           blockId: block.id,
           blockOrder: block.order,
           sentenceIndex: anchor.sentenceIndex,
-          lineOffset: anchor.lineOffset
+          lineOffset: anchor.lineOffset,
+          progression: book.totalBlocks > 1 ? block.order / (book.totalBlocks - 1) : 0,
+          excerpt:
+            'sentences' in block
+              ? block.sentences[anchor.sentenceIndex]?.text?.trim().slice(0, 160) ??
+                block.text.trim().slice(0, 160)
+              : anchor.excerpt
         };
       }
+    }
+  }
+
+  if (anchor.sectionId) {
+    const section = book.sections.find((candidate) => candidate.id === anchor.sectionId);
+    const firstBlock = section?.blocks.find(isTextualBlock) ?? section?.blocks[0];
+    if (section && firstBlock) {
+      return {
+        locator: `${section.href}#${firstBlock.id}:${anchor.sentenceIndex}:${anchor.lineOffset}`,
+        sectionId: section.id,
+        sectionIndex: section.index,
+        sectionHref: section.href,
+        blockId: firstBlock.id,
+        blockOrder: firstBlock.order,
+        sentenceIndex: anchor.sentenceIndex,
+        lineOffset: anchor.lineOffset,
+        progression: book.totalBlocks > 1 ? firstBlock.order / (book.totalBlocks - 1) : 0,
+        excerpt:
+          'sentences' in firstBlock
+            ? firstBlock.sentences[anchor.sentenceIndex]?.text?.trim().slice(0, 160) ??
+              firstBlock.text.trim().slice(0, 160)
+            : anchor.excerpt
+      };
     }
   }
 
