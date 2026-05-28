@@ -61,11 +61,9 @@ function isMobileFullscreenTarget(): boolean {
 
 function isAlreadyFullscreen(): boolean {
   const fullscreenDocument = document as FullscreenDocument;
-  const fullscreenMatch = window.matchMedia?.('(display-mode: fullscreen)').matches ?? false;
   return Boolean(
     document.fullscreenElement ||
-      fullscreenDocument.webkitFullscreenElement ||
-      fullscreenMatch
+      fullscreenDocument.webkitFullscreenElement
   );
 }
 
@@ -76,7 +74,11 @@ async function requestFullscreenIfPossible(): Promise<boolean> {
 
   const target = document.documentElement as FullscreenElement;
   if (typeof target.requestFullscreen === 'function') {
-    await target.requestFullscreen({ navigationUI: 'hide' });
+    try {
+      await target.requestFullscreen({ navigationUI: 'hide' });
+    } catch {
+      await target.requestFullscreen();
+    }
     return true;
   }
 
