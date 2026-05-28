@@ -3,9 +3,10 @@
   "short_name": "Pretext",
   "start_url": "./",
   "scope": "./",
-  "display": "standalone",
+  "display": "fullscreen",
+  "display_override": ["fullscreen", "standalone"],
   "background_color": "#ffffff",
-  "theme_color": "#ffffff",
+  "theme_color": "#0e1217",
   "description": "Local-first EPUB and PDF parsing with viewport-sized vertical reading.",
   "icons": [
     {
