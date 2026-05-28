@@ -73,7 +73,7 @@ export function UploadScreen({
     <main className="upload-shell">
       <div className="upload-backdrop" />
       <section className="upload-card">
-        <p className="eyebrow">Immer Lite</p>
+        <p className="eyebrow">ImmerLite</p>
         <h1>Modern vertical reading, portioned for the actual viewport.</h1>
         <p className="upload-copy">
           This reader ingests a local EPUB or PDF, reinterprets the source into a clean

@@ -1,6 +1,6 @@
 {
-  "name": "Pretext Reader",
-  "short_name": "Pretext",
+  "name": "ImmerLite",
+  "short_name": "ImmerLite",
   "start_url": "./",
   "scope": "./",
   "display": "fullscreen",

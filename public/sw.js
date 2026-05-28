@@ -1,4 +1,4 @@
-const VERSION = 'pretext-v4';
+const VERSION = 'pretext-v5';
 const APP_SHELL = [
   './',
   './index.html',
