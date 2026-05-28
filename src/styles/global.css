@@ -116,6 +116,11 @@ button {
   --loading-progress-rail: rgba(222, 222, 232, 0.82);
   --loading-progress-stroke: rgba(109, 85, 255, 0.12);
   --loading-progress-glow: rgba(109, 85, 255, 0.14);
+  --annotation-backdrop: rgba(28, 24, 52, 0.2);
+  --annotation-book-bg: rgba(248, 247, 255, 0.78);
+  --annotation-book-border: rgba(109, 85, 255, 0.12);
+  --annotation-note-bg: linear-gradient(135deg, rgba(109, 85, 255, 0.14), rgba(255, 255, 255, 0.96));
+  --annotation-note-border: rgba(109, 85, 255, 0.24);
   --shadow: 0 28px 60px rgba(45, 39, 107, 0.12);
 }
 
@@ -137,6 +142,11 @@ button {
   --loading-progress-rail: rgba(93, 73, 48, 0.16);
   --loading-progress-stroke: rgba(167, 79, 43, 0.14);
   --loading-progress-glow: rgba(167, 79, 43, 0.12);
+  --annotation-backdrop: rgba(42, 27, 16, 0.2);
+  --annotation-book-bg: rgba(255, 246, 229, 0.62);
+  --annotation-book-border: rgba(167, 79, 43, 0.14);
+  --annotation-note-bg: linear-gradient(135deg, rgba(167, 79, 43, 0.14), rgba(251, 242, 226, 0.94));
+  --annotation-note-border: rgba(167, 79, 43, 0.26);
   --shadow: 0 28px 60px rgba(92, 56, 20, 0.16);
   background:
     radial-gradient(circle at top, rgba(196, 151, 77, 0.16), transparent 36%),
@@ -162,6 +172,11 @@ button {
   --loading-progress-rail: rgba(255, 255, 255, 0.06);
   --loading-progress-stroke: rgba(255, 255, 255, 0.04);
   --loading-progress-glow: rgba(240, 165, 92, 0.1);
+  --annotation-backdrop: rgba(0, 0, 0, 0.42);
+  --annotation-book-bg: rgba(255, 255, 255, 0.04);
+  --annotation-book-border: rgba(255, 255, 255, 0.1);
+  --annotation-note-bg: linear-gradient(135deg, rgba(240, 165, 92, 0.16), rgba(23, 26, 31, 0.94));
+  --annotation-note-border: rgba(240, 165, 92, 0.28);
   --shadow: 0 28px 60px rgba(0, 0, 0, 0.28);
   background:
     radial-gradient(circle at top, rgba(89, 124, 154, 0.22), transparent 34%),
@@ -890,8 +905,9 @@ button {
   position: absolute;
   inset: 0;
   border: 0;
-  background: rgba(6, 8, 12, 0.28);
+  background: var(--annotation-backdrop);
   z-index: 34;
+  animation: annotation-backdrop-in 180ms ease-out both;
 }
 
 .annotation-sheet {
@@ -902,6 +918,8 @@ button {
   z-index: 35;
   user-select: none;
   -webkit-user-select: none;
+  animation: annotation-sheet-in 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  transform-origin: 50% 100%;
 }
 
 .annotation-sheet-inner {
@@ -914,10 +932,84 @@ button {
   box-shadow: var(--shadow);
 }
 
+.annotation-sheet-viewer {
+  left: calc(14px + var(--safe-left));
+  right: calc(14px + var(--safe-right));
+  bottom: calc(16px + var(--safe-bottom));
+}
+
+.annotation-sheet-viewer .annotation-sheet-inner {
+  gap: 12px;
+  padding: 12px;
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, var(--surface-strong), var(--surface)),
+    var(--surface-strong);
+  backdrop-filter: blur(18px);
+}
+
+.annotation-viewer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 22px;
+}
+
+.annotation-viewer-title,
+.annotation-content-label {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.annotation-content-block {
+  display: grid;
+  gap: 8px;
+  padding: 11px 12px;
+  border: 1px solid var(--stroke);
+  border-radius: 10px;
+}
+
+.annotation-content-block-book {
+  background: var(--annotation-book-bg);
+  border-color: var(--annotation-book-border);
+}
+
+.annotation-content-block-note {
+  background: var(--annotation-note-bg);
+  border-color: var(--annotation-note-border);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16);
+}
+
 .annotation-selection-preview,
 .annotation-note-copy {
   margin: 0;
   color: var(--text);
+}
+
+.annotation-selection-preview {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(1rem, 4.4vw, 1.2rem);
+  line-height: 1.45;
+  color: var(--muted);
+  quotes: "\201C" "\201D";
+}
+
+.annotation-selection-preview::before {
+  content: open-quote;
+}
+
+.annotation-selection-preview::after {
+  content: close-quote;
+}
+
+.annotation-note-copy {
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.42;
 }
 
 .annotation-textarea {
@@ -977,6 +1069,35 @@ button {
   color: var(--text);
   padding: 9px 13px;
   border-radius: 999px;
+  font-weight: 700;
+}
+
+.annotation-actions .annotation-delete-button {
+  color: var(--accent);
+  border-color: var(--annotation-note-border);
+  background: var(--annotation-book-bg);
+}
+
+@keyframes annotation-backdrop-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes annotation-sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .scene-break {
