@@ -1790,23 +1790,18 @@ export function ReaderScreen({
           className="annotation-sheet annotation-sheet-viewer"
           role="dialog"
           aria-modal="true"
-          aria-labelledby="annotation-viewer-title"
+          aria-label="Annotation"
         >
           <div className="annotation-sheet-inner">
-            <div className="annotation-viewer-header">
-              <p id="annotation-viewer-title" className="annotation-viewer-title">Notitie</p>
-            </div>
             <section className="annotation-content-block annotation-content-block-book">
-              <p className="annotation-content-label">Boektekst</p>
               <p className="annotation-selection-preview">{activeAnnotation.selectedText}</p>
             </section>
             <section className="annotation-content-block annotation-content-block-note">
-              <p className="annotation-content-label">Notitie</p>
               <p className="annotation-note-copy">{activeAnnotation.note}</p>
             </section>
             <div className="annotation-actions">
               <button type="button" onClick={() => setActiveAnnotation(null)}>
-                Sluit
+                Close
               </button>
               <button
                 type="button"
@@ -1816,7 +1811,7 @@ export function ReaderScreen({
                   setActiveAnnotation(null);
                 }}
               >
-                Verwijder
+                Delete
               </button>
             </div>
           </div>

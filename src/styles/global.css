@@ -948,26 +948,9 @@ button {
   backdrop-filter: blur(18px);
 }
 
-.annotation-viewer-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 22px;
-}
-
-.annotation-viewer-title,
-.annotation-content-label {
-  margin: 0;
-  color: var(--muted);
-  font-size: 0.72rem;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
 .annotation-content-block {
   display: grid;
-  gap: 8px;
+  gap: 0;
   padding: 11px 12px;
   border: 1px solid var(--stroke);
   border-radius: 10px;
