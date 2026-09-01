@@ -109,3 +109,14 @@ export interface TextAnnotation {
   createdAt: string;
   updatedAt: string;
 }
+
+/** A temporary, unsaved annotation range within one canonical text block. */
+export interface AnnotationSelection {
+  blockId: string;
+  blockOrder: number;
+  startOffset: number;
+  endOffset: number;
+  sentenceIndex: number;
+  selectedText: string;
+  rects: ReaderRectSnapshot[];
+}

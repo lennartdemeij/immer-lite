@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import type { CanonicalBook } from '../../types/book';
 import type {
+  AnnotationSelection,
   PortionBlock,
   ReaderRectSnapshot,
   ReaderPortion,
@@ -12,12 +13,16 @@ import type {
 import { PortionView } from './PortionView';
 import { SettingsPanel } from './SettingsPanel';
 import { READER_CHROME } from '../hooks/useReaderViewport';
-import { findPortionIndexForAnchor } from '../../lib/portioning/paginateBook';
-import { clampAnchorToBook } from '../../lib/reader/anchors';
 import {
   captureRangeRectSnapshots,
   measureAnnotationRectSnapshots
 } from '../../lib/reader/contentRects';
+import {
+  createTextAnnotation,
+  groupAnnotationsByBlock
+} from '../../lib/annotations/domain';
+import { readAnnotationSelection } from '../../lib/annotations/domSelection';
+import { getAnnotationPortionIndexes } from '../../lib/annotations/navigation';
 
 interface ReaderScreenProps {
   book: CanonicalBook;
@@ -61,16 +66,6 @@ interface PaneLayout {
   forwardSnapOffset: number;
 }
 
-interface SelectionDraft {
-  blockId: string;
-  blockOrder: number;
-  startOffset: number;
-  endOffset: number;
-  sentenceIndex: number;
-  selectedText: string;
-  rects: ReaderRectSnapshot[];
-}
-
 interface ProgressDragState {
   pointerId: number;
   startY: number;
@@ -104,14 +99,6 @@ const SELECTION_SETTLE_MS = 260;
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
-}
-
-function makeAnnotationId(): string {
-  if (typeof globalThis.crypto?.randomUUID === 'function') {
-    return globalThis.crypto.randomUUID();
-  }
-
-  return `annotation-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 function getNeutralProgressTilt(): ProgressTilt {
@@ -313,7 +300,7 @@ export function ReaderScreen({
     originY: 50
   });
   const [selectionEnabled, setSelectionEnabled] = useState(false);
-  const [selectionDraft, setSelectionDraft] = useState<SelectionDraft | null>(null);
+  const [selectionDraft, setSelectionDraft] = useState<AnnotationSelection | null>(null);
   const [annotationNote, setAnnotationNote] = useState('');
   const [activeAnnotation, setActiveAnnotation] = useState<TextAnnotation | null>(null);
   const [activeAnnotationRects, setActiveAnnotationRects] = useState<ReaderRectSnapshot[]>([]);
@@ -371,7 +358,7 @@ export function ReaderScreen({
     window.getSelection()?.removeAllRanges();
   }
 
-  function readSelectionDraftFromDom(): SelectionDraft | null {
+  function readSelectionDraftFromDom() {
     const selection = window.getSelection();
     if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
       return null;
@@ -383,83 +370,12 @@ export function ReaderScreen({
       return null;
     }
 
-    const commonAncestor =
-      range.commonAncestorContainer.nodeType === Node.ELEMENT_NODE
-        ? (range.commonAncestorContainer as Element)
-        : range.commonAncestorContainer.parentElement;
-    const blockElement = commonAncestor?.closest<HTMLElement>('.reader-block[data-block-id]');
-    if (!blockElement || !currentPane.contains(blockElement)) {
-      return null;
-    }
-
-    const startElement =
-      range.startContainer.nodeType === Node.ELEMENT_NODE
-        ? (range.startContainer as Element)
-        : range.startContainer.parentElement;
-    const endElement =
-      range.endContainer.nodeType === Node.ELEMENT_NODE
-        ? (range.endContainer as Element)
-        : range.endContainer.parentElement;
-    const startFragment = startElement?.closest<HTMLElement>('[data-block-start][data-block-end]');
-    const endFragment = endElement?.closest<HTMLElement>('[data-block-start][data-block-end]');
-    if (!startFragment || !endFragment) {
-      return null;
-    }
-
-    const startBase = Number(startFragment.dataset.blockStart);
-    const endBase = Number(endFragment.dataset.blockStart);
-    if (!Number.isFinite(startBase) || !Number.isFinite(endBase)) {
-      return null;
-    }
-
-    const startOffset = clamp(
-      startBase + range.startOffset,
-      Number(startFragment.dataset.blockStart),
-      Number(startFragment.dataset.blockEnd)
-    );
-    const endOffset = clamp(
-      endBase + range.endOffset,
-      Number(endFragment.dataset.blockStart),
-      Number(endFragment.dataset.blockEnd)
-    );
-
-    const normalizedStart = Math.min(startOffset, endOffset);
-    const normalizedEnd = Math.max(startOffset, endOffset);
-    const selectedText = selection.toString().trim();
-    if (!selectedText || normalizedEnd <= normalizedStart) {
-      return null;
-    }
-
-    let sentenceIndex = Number(blockElement.dataset.startSentence ?? 0);
-    const matchedBlock = book.sections
-      .flatMap((section) => section.blocks)
-      .find(
-        (block): block is Extract<typeof block, { kind: 'heading' | 'paragraph' | 'quote' | 'list-item' }> =>
-          (block.kind === 'heading' ||
-            block.kind === 'paragraph' ||
-            block.kind === 'quote' ||
-            block.kind === 'list-item') &&
-          block.id === blockElement.dataset.blockId
-      );
-    if (matchedBlock) {
-      for (const sentence of matchedBlock.sentences) {
-        if (sentence.startOffset <= normalizedStart) {
-          sentenceIndex = sentence.index;
-        } else {
-          break;
-        }
-      }
-    }
-
-    return {
-      blockId: blockElement.dataset.blockId ?? '',
-      blockOrder: Number(blockElement.dataset.blockOrder ?? 0),
-      startOffset: normalizedStart,
-      endOffset: normalizedEnd,
-      sentenceIndex,
-      selectedText,
-      rects: captureRangeRectSnapshots(range, currentPane)
-    };
+    return readAnnotationSelection({
+      range,
+      scope: currentPane,
+      book,
+      captureRects: captureRangeRectSnapshots
+    });
   }
 
   function flushDragOffset(nextOffset: number) {
@@ -922,28 +838,11 @@ export function ReaderScreen({
     snapDirection,
     stageHeight
   ]);
-  const annotationsByBlock = useMemo(() => {
-    const next = new Map<string, TextAnnotation[]>();
-    annotations.forEach((annotation) => {
-      const entries = next.get(annotation.blockId) ?? [];
-      entries.push(annotation);
-      next.set(annotation.blockId, entries);
-    });
-    return next;
-  }, [annotations]);
-  const annotationPortionIndexes = useMemo(() => {
-    const next = new Set<number>();
-    annotations.forEach((annotation) => {
-      const index = findPortionIndexForAnchor(portions, {
-        blockId: annotation.blockId,
-        blockOrder: annotation.blockOrder,
-        sentenceIndex: annotation.sentenceIndex,
-        lineOffset: 0
-      });
-      next.add(index);
-    });
-    return next;
-  }, [annotations, portions]);
+  const annotationsByBlock = useMemo(() => groupAnnotationsByBlock(annotations), [annotations]);
+  const annotationPortionIndexes = useMemo(
+    () => getAnnotationPortionIndexes(annotations, portions),
+    [annotations, portions]
+  );
   const activeNavigationIndex = clamp(
     focusedPortionIndex,
     0,
@@ -1256,26 +1155,7 @@ export function ReaderScreen({
       return;
     }
 
-    onSaveAnnotation({
-      id: makeAnnotationId(),
-      fingerprint: book.fingerprint,
-      locator: clampAnchorToBook(book, {
-        blockId: selectionDraft.blockId,
-        blockOrder: selectionDraft.blockOrder,
-        sentenceIndex: selectionDraft.sentenceIndex,
-        lineOffset: 0
-      }),
-      blockId: selectionDraft.blockId,
-      blockOrder: selectionDraft.blockOrder,
-      startOffset: selectionDraft.startOffset,
-      endOffset: selectionDraft.endOffset,
-      sentenceIndex: selectionDraft.sentenceIndex,
-      selectedText: selectionDraft.selectedText,
-      rects: selectionDraft.rects,
-      note: annotationNote.trim(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    });
+    onSaveAnnotation(createTextAnnotation(book, selectionDraft, annotationNote));
     setAnnotationNote('');
     setSelectionDraft(null);
     setSelectionEnabled(false);
