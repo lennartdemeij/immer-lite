@@ -7,6 +7,7 @@ import { KokoroSpeech } from '../../lib/reader/kokoroSpeech';
 interface ReadAloudOptions {
   book: CanonicalBook;
   portion: ReaderPortion | null;
+  nextPortion?: ReaderPortion | null;
   rate: number;
   engine?: 'built-in' | 'ai';
   canGoNext: boolean;
@@ -22,9 +23,11 @@ export function useReadAloud(options: ReadAloudOptions) {
     ? typeof window !== 'undefined' && 'Worker' in window && 'AudioContext' in window && aiLanguageSupported
     : builtInSupported;
   const chunks = useMemo(() => getSpeechChunks(options.book, options.portion), [options.book, options.portion]);
+  const nextChunks = useMemo(() => engine === 'ai' ? getSpeechChunks(options.book, options.nextPortion ?? null) : [],
+    [options.book, options.nextPortion, engine]);
   const key = JSON.stringify(chunks);
-  const latest = useRef({ ...options, chunks, key });
-  latest.current = { ...options, chunks, key };
+  const latest = useRef({ ...options, chunks, nextChunks, key });
+  latest.current = { ...options, chunks, nextChunks, key };
   const [isPlaying, setIsPlaying] = useState(false);
   const [spokenWord, setSpokenWord] = useState<SpokenWord | null>(null);
   const spokenChunk = useMemo(() => spokenWord && chunks.find((chunk) => chunk.words.some((word) =>
@@ -93,7 +96,6 @@ export function useReadAloud(options: ReadAloudOptions) {
     const generation = ++state.generation;
     const current = () => state.active && generation === state.generation;
     const firstWord = state.word;
-    const from = firstWord === 0 ? 0 : chunk.words[firstWord].charStart;
     const voice = /en[-_]gb/i.test(latest.current.book.metadata.language ?? '') ? 'bf_emma' : 'af_heart';
     const speed = Math.min(2, Math.max(0.5, state.rate));
     try {
@@ -103,8 +105,12 @@ export function useReadAloud(options: ReadAloudOptions) {
       const speech = aiSpeech.current;
       setStatus('Preparing AI voice…');
       await speech.unlock();
-      const audio = await speech.generate(chunk.text.slice(from), voice, speed);
+      // Reuse the same recording after a pause; don't infer a new sentence suffix.
+      const audio = await speech.generate(chunk.text, voice, speed);
       if (!current()) return;
+      const allWeights = estimateWordDurations(chunk, 0, 1);
+      const offset = allWeights.slice(0, firstWord).reduce((sum, weight) => sum + weight, 0)
+        / allWeights.reduce((sum, weight) => sum + weight, 0) * audio.samples.length / audio.sampleRate;
       const highlight = (index: number) => {
         state.word = index;
         state.cursor = chunk.words[index];
@@ -116,7 +122,7 @@ export function useReadAloud(options: ReadAloudOptions) {
         state.chunk += 1;
         state.word = 0;
         speak();
-      });
+      }, offset);
       setStatus(null);
       highlight(firstWord);
       // Fit the word-length estimates to this sentence's actual audio duration.
@@ -134,8 +140,9 @@ export function useReadAloud(options: ReadAloudOptions) {
         }, Math.max(0, (elapsed - clock.elapsed()) * 1000));
       };
       schedule(0);
-      const next = state.chunks[state.chunk + 1];
-      if (next) void speech.generate(next.text, voice, speed).catch(() => {});
+      // Keep a small rolling buffer, including the next portion's first sentences.
+      const ahead = [...state.chunks.slice(state.chunk + 1), ...latest.current.nextChunks].slice(0, 3);
+      ahead.forEach((next) => { void speech.generate(next.text, voice, speed).catch(() => {}); });
     } catch (cause) {
       if (!current()) return;
       aiSpeech.current?.dispose();

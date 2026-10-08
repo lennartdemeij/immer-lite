@@ -64,11 +64,11 @@ export class KokoroSpeech {
     }).catch((error) => { this.cache.delete(key); throw error; });
     this.cache.set(key, result);
     // Keep only a few sentences, never the entire book's audio.
-    if (this.cache.size > 3) this.cache.delete(this.cache.keys().next().value!);
+    if (this.cache.size > 8) this.cache.delete(this.cache.keys().next().value!);
     return result;
   }
 
-  play(audio: SpeechAudio, rate: number, onEnd: () => void) {
+  play(audio: SpeechAudio, rate: number, onEnd: () => void, offset = 0) {
     this.cancel();
     const buffer = this.context.createBuffer(1, audio.samples.length, audio.sampleRate);
     buffer.copyToChannel(new Float32Array(audio.samples), 0);
@@ -78,9 +78,9 @@ export class KokoroSpeech {
     source.connect(this.context.destination);
     source.onended = () => { if (this.source === source) this.source = null; source.disconnect(); onEnd(); };
     this.source = source;
-    source.start();
+    source.start(0, offset);
     const startedAt = this.context.currentTime;
-    return { duration: buffer.duration / rate, elapsed: () => this.context.currentTime - startedAt };
+    return { duration: (buffer.duration - offset) / rate, elapsed: () => this.context.currentTime - startedAt };
   }
 
   cancel() {

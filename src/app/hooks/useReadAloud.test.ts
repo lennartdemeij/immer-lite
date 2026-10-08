@@ -96,6 +96,23 @@ afterEach(() => {
 });
 
 describe('read aloud', () => {
+  it('prepares sentences across the next page boundary while this page is playing', async () => {
+    render({ engine: 'ai', canGoNext: true, nextPortion: page(23, text.length) });
+    await act(async () => result.toggle());
+    expect(ai.generate).toHaveBeenCalledWith('Next sentence.', 'af_heart', 1);
+    expect(options.onNext).not.toHaveBeenCalled();
+  });
+
+  it('reuses full sentence audio when resuming at a later word', async () => {
+    render({ engine: 'ai' });
+    await act(async () => result.toggle());
+    act(() => vi.advanceTimersByTime(1000));
+    act(() => result.toggle());
+    await act(async () => result.toggle());
+    expect(ai.generate).toHaveBeenLastCalledWith('Hello wonderful world.', 'af_heart', 1);
+    expect(ai.play.mock.calls.at(-1)?.[3]).toBeGreaterThan(0);
+  });
+
   it('fits AI word highlights to the real sentence audio and prepares the next sentence', async () => {
     render({ engine: 'ai', portion: page(0, text.length) });
     await act(async () => result.toggle());
