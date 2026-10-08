@@ -39,7 +39,7 @@ class FakeUtterance {
   onstart: (() => void) | null = null;
   onend: (() => void) | null = null;
   onboundary: ((event: { name: string; charIndex: number }) => void) | null = null;
-  onerror: (() => void) | null = null;
+  onerror: ((event?: { error: string }) => void) | null = null;
   constructor(public text: string) {}
 }
 
@@ -80,6 +80,65 @@ afterEach(() => {
 });
 
 describe('read aloud', () => {
+  it('falls back when Android refuses an advertised voice before speech starts', () => {
+    const voice = { name: 'English US', voiceURI: 'english-us', lang: 'en_US', localService: true, default: true };
+    vi.stubGlobal('speechSynthesis', { getVoices: () => [voice], cancel, speak: (utterance: FakeUtterance) => spoken.push(utterance) });
+    act(() => result.toggle());
+    expect(current().voice).toBe(voice);
+    expect(current().lang).toBe('en-US');
+    act(() => current().onerror?.({ error: 'synthesis-failed' }));
+    expect(result.error).toBeNull();
+    expect(result.isPlaying).toBe(true);
+    expect(spoken).toHaveLength(2);
+    expect(current().voice).toBeNull();
+    expect(current().text).toBe('Hello wonderful world.');
+    start(); end();
+    expect(result.isPlaying).toBe(false);
+  });
+
+  it('prefers the installed locale and uses a successful fallback for subsequent sentences', () => {
+    const australia = { name: 'English Australia', lang: 'en-AU', localService: true, default: true };
+    const usa = { name: 'English US', lang: 'en_US', localService: true, default: false };
+    vi.stubGlobal('speechSynthesis', { getVoices: () => [australia, usa], cancel, speak: (utterance: FakeUtterance) => spoken.push(utterance) });
+    render({ portion: page(0, text.length) });
+    act(() => result.toggle());
+    expect(current().voice).toBe(usa);
+    act(() => current().onerror?.({ error: 'voice-unavailable' }));
+    expect(current().voice).toBeNull();
+    start(); end();
+    expect(current().voice).toBeNull();
+    expect(current().text).toBe('Next sentence.');
+  });
+
+  it('tries the device default if the requested language cannot start, with bounded retries', () => {
+    act(() => result.toggle());
+    act(() => current().onerror?.({ error: 'synthesis-failed' }));
+    act(() => current().onerror?.({ error: 'synthesis-failed' }));
+    expect(current().lang).toBe('');
+    act(() => current().onerror?.({ error: 'synthesis-failed' }));
+    expect(spoken).toHaveLength(3);
+    expect(result.error).toContain('synthesis-failed');
+    expect(result.isPlaying).toBe(false);
+    act(() => result.toggle());
+    expect(current().lang).toBe('en-US');
+  });
+
+  it('does not repeat already spoken text when the engine fails mid-sentence', () => {
+    act(() => result.toggle());
+    start();
+    act(() => current().onerror?.({ error: 'synthesis-failed' }));
+    expect(spoken).toHaveLength(1);
+    expect(result.error).toContain('synthesis-failed');
+  });
+
+  it('exposes the actual browser error when no voice can start', () => {
+    act(() => result.toggle());
+    act(() => current().onerror?.({ error: 'not-allowed' }));
+    expect(result.error).toContain('not-allowed');
+    expect(spoken).toHaveLength(1);
+    expect(result.isPlaying).toBe(false);
+  });
+
   it('speaks complete sentences and estimates words by their length, then resynchronizes', () => {
     render({ portion: page(0, text.length) });
     act(() => result.toggle());

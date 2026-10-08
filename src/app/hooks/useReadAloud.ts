@@ -28,7 +28,8 @@ export function useReadAloud(options: ReadAloudOptions) {
     chunks: chunks as SpeechChunk[], key, fingerprint: options.book.fingerprint, portionId: options.portion?.id,
     rate: options.rate, cursor: null as SpokenWord | null,
     utterance: null as SpeechSynthesisUtterance | null,
-    timingScale: 1
+    timingScale: 1,
+    voiceFallback: 0
   });
 
   function clearWordTimer() {
@@ -79,15 +80,21 @@ export function useReadAloud(options: ReadAloudOptions) {
     const word = chunk.words[state.word];
     const language = latest.current.book.metadata.language?.replaceAll('_', '-') || 'en';
     const languagePrefix = language.split('-')[0].toLowerCase();
-    const voices = window.speechSynthesis.getVoices().filter((voice) => voice.lang.toLowerCase().split('-')[0] === languagePrefix);
-    const voice = voices.find((candidate) => candidate.localService && candidate.default)
-      ?? voices.find((candidate) => candidate.localService) ?? voices[0];
+    const voiceLanguage = (voice: SpeechSynthesisVoice) => voice.lang.replaceAll('_', '-');
+    const voices = window.speechSynthesis.getVoices().filter((voice) => voiceLanguage(voice).toLowerCase().split('-')[0] === languagePrefix);
+    const voice = state.voiceFallback === 0
+      ? voices.find((candidate) => candidate.localService && voiceLanguage(candidate).toLowerCase() === language.toLowerCase())
+        ?? voices.find((candidate) => candidate.localService && candidate.default)
+        ?? voices.find((candidate) => candidate.localService) ?? voices[0]
+      : undefined;
     // Android supplies no word events. Estimate within sentences and
     // resynchronize at each actual start/end; use real boundaries when available.
     const firstWord = state.word;
     const from = state.word === 0 ? 0 : word.charStart;
     const utterance = new SpeechSynthesisUtterance(chunk.text.slice(from));
-    utterance.lang = language;
+    // Android advertises locales such as en_US. Use the actual installed
+    // locale first, then let the browser choose if that voice cannot start.
+    if (state.voiceFallback < 2) utterance.lang = voice ? voiceLanguage(voice) : language;
     utterance.rate = Math.min(2, Math.max(0.5, state.rate));
     if (voice) utterance.voice = voice;
     const generation = ++state.generation;
@@ -138,10 +145,20 @@ export function useReadAloud(options: ReadAloudOptions) {
       state.word = 0;
       speak();
     };
-    utterance.onerror = () => {
+    utterance.onerror = (event) => {
       if (!current()) return;
+      const code = event?.error || 'unknown';
+      if (startedAt === null && state.voiceFallback < 2 &&
+        ['voice-unavailable', 'language-unavailable', 'language-not-supported', 'synthesis-failed', 'synthesis-unavailable', 'network'].includes(code)) {
+        cancelUtterance();
+        state.voiceFallback += 1;
+        speak();
+        return;
+      }
       finish();
-      setError('Unable to read aloud. Check your device’s speech settings and try again.');
+      setError(code === 'not-allowed'
+        ? 'Reading was blocked by the browser. Tap Play to try again (not-allowed).'
+        : `Unable to read aloud (${code}). Try Play again; if it still fails, check your device’s text-to-speech engine.`);
     };
     state.utterance = utterance;
     try {
@@ -161,6 +178,7 @@ export function useReadAloud(options: ReadAloudOptions) {
       return;
     }
     if (!supported) return;
+    if (error) state.voiceFallback = 0;
     state.active = true;
     setError(null);
     setIsPlaying(true);
@@ -182,7 +200,10 @@ export function useReadAloud(options: ReadAloudOptions) {
       const cursor = bookChanged ? null : state.cursor;
       cancelUtterance();
       state.fingerprint = options.book.fingerprint;
-      if (bookChanged) state.timingScale = 1;
+      if (bookChanged) {
+        state.timingScale = 1;
+        state.voiceFallback = 0;
+      }
       state.key = key;
       state.portionId = options.portion?.id;
       state.rate = options.rate;
