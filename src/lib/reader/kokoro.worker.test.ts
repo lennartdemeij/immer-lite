@@ -4,6 +4,7 @@ const runtime = vi.hoisted(() => ({ load: vi.fn(), generate: vi.fn(), dispose: v
 vi.mock('kokoro-js', () => ({ KokoroTTS: { from_pretrained: runtime.load } }));
 vi.mock('@huggingface/transformers', () => ({ env: { backends: { onnx: { wasm: {} } } } }));
 let messages: ReturnType<typeof vi.fn>;
+let requestAdapter: ReturnType<typeof vi.fn>;
 
 beforeEach(async () => {
   vi.resetModules();
@@ -13,13 +14,14 @@ beforeEach(async () => {
   runtime.load.mockResolvedValue({ generate: runtime.generate, model: { dispose: runtime.dispose } });
   messages = vi.fn();
   vi.stubGlobal('postMessage', messages);
-  vi.stubGlobal('navigator', { gpu: { requestAdapter: vi.fn().mockResolvedValue({}) } });
+  requestAdapter = vi.fn().mockResolvedValue({});
+  vi.stubGlobal('navigator', { gpu: { requestAdapter } });
   await import('./kokoro.worker');
 });
 afterEach(() => vi.unstubAllGlobals());
 
-async function generate() {
-  self.onmessage?.call(self, { data: { id: 1, text: 'Hello world.', voice: 'af_heart', speed: 1 } } as MessageEvent);
+async function generate(cpuOnly = false) {
+  self.onmessage?.call(self, { data: { id: 1, text: 'Hello world.', voice: 'af_heart', speed: 1, cpuOnly } } as MessageEvent);
   await vi.waitFor(() => expect(messages).toHaveBeenCalledWith(
     expect.objectContaining({ id: 1, type: 'audio' }), expect.anything()
   ));
@@ -28,6 +30,12 @@ async function generate() {
 it('uses GPU inference when an adapter is available', async () => {
   await generate();
   expect(runtime.load).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ device: 'webgpu', dtype: 'fp32' }));
+});
+
+it('never allocates the large GPU model when the device requests the compact route', async () => {
+  await generate(true);
+  expect(requestAdapter).not.toHaveBeenCalled();
+  expect(runtime.load).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ device: 'wasm', dtype: 'q8' }));
 });
 
 it('uses the small CPU model when WebGPU is unavailable', async () => {

@@ -45,12 +45,12 @@ async function generate(tts: KokoroTTS, text: string, voice: 'af_heart' | 'bf_em
   return samples;
 }
 
-self.onmessage = ({ data }: MessageEvent<{ id: number; text: string; voice: 'af_heart' | 'bf_emma'; speed: number }>) => {
+self.onmessage = ({ data }: MessageEvent<{ id: number; text: string; voice: 'af_heart' | 'bf_emma'; speed: number; cpuOnly?: boolean }>) => {
   // Serialize inference while playback consumes the rolling sentence buffer.
   queue = queue.then(async () => {
     const { id, text, voice, speed } = data;
     try {
-      if (!model) model = loadModel(id);
+      if (!model) model = loadModel(id, data.cpuOnly);
       const tts = await model;
       let samples: Float32Array;
       try {

@@ -1,16 +1,20 @@
 export interface SpeechAudio {
-  samples: Float32Array;
+  samples: Float32Array<ArrayBuffer>;
   sampleRate: number;
 }
 
 type WorkerReply = { id: number } & (
-  | { type: 'audio'; samples: Float32Array; sampleRate: number }
+  | { type: 'audio'; samples: Float32Array<ArrayBuffer>; sampleRate: number }
   | { type: 'progress'; message: string }
   | { type: 'error'; message: string }
 );
 
 // Created only after an explicit Play with AI voice selected.
 export class KokoroSpeech {
+  // iOS can kill the entire tab while allocating fp32 GPU weights, before any
+  // error handler runs. Detect iPad's desktop UA on the main thread as well.
+  private readonly cpuOnly = /iPad|iPhone|iPod/i.test(navigator.userAgent)
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   private worker = new Worker(new URL('./kokoro.worker.ts', import.meta.url), { type: 'module' });
   private context = new AudioContext();
   private source: AudioBufferSourceNode | null = null;
@@ -60,18 +64,18 @@ export class KokoroSpeech {
     const id = ++this.requestId;
     const result = new Promise<SpeechAudio>((resolve, reject) => {
       this.pending.set(id, { resolve, reject });
-      this.worker.postMessage({ id, text, voice, speed });
+      this.worker.postMessage({ id, text, voice, speed, cpuOnly: this.cpuOnly });
     }).catch((error) => { this.cache.delete(key); throw error; });
     this.cache.set(key, result);
     // Keep only a few sentences, never the entire book's audio.
-    if (this.cache.size > 8) this.cache.delete(this.cache.keys().next().value!);
+    if (this.cache.size > (this.cpuOnly ? 4 : 8)) this.cache.delete(this.cache.keys().next().value!);
     return result;
   }
 
   play(audio: SpeechAudio, rate: number, onEnd: () => void, offset = 0) {
     this.cancel();
     const buffer = this.context.createBuffer(1, audio.samples.length, audio.sampleRate);
-    buffer.copyToChannel(new Float32Array(audio.samples), 0);
+    buffer.copyToChannel(audio.samples, 0);
     const source = this.context.createBufferSource();
     source.buffer = buffer;
     source.playbackRate.value = rate;
