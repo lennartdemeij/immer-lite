@@ -29,7 +29,8 @@ export const DEFAULT_SETTINGS: ReaderSettings = {
   lineHeight: 1.72,
   horizontalPadding: 28,
   theme: 'dark',
-  speechRate: 1
+  speechRate: 1,
+  hyphenation: false
 };
 
 export function loadSettings(): ReaderSettings {

@@ -551,9 +551,9 @@ button {
 }
 
 .reader-tools-menu {
-  position: absolute;
-  top: 52px;
-  right: 0;
+  position: fixed;
+  top: calc(70px + var(--safe-top));
+  left: calc(22px + var(--safe-left));
   width: 204px;
   padding: 6px;
   border: 1px solid var(--stroke);
@@ -1554,6 +1554,15 @@ button {
   display: grid;
   gap: 8px;
 }
+
+.settings-group label.settings-checkbox {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 32px;
+}
+
+.settings-checkbox input { width: 20px; height: 20px; accent-color: var(--accent); }
 
 .settings-upload-button {
   width: 100%;

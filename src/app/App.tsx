@@ -106,8 +106,9 @@ export function App() {
     fontSize: settings.fontSize,
     lineHeight: settings.lineHeight,
     horizontalPadding: settings.horizontalPadding,
-    theme: 'light'
-  }), [settings.fontSize, settings.lineHeight, settings.horizontalPadding]);
+    theme: 'light',
+    hyphenation: settings.hyphenation ?? false
+  }), [settings.fontSize, settings.lineHeight, settings.horizontalPadding, settings.hyphenation]);
   const [renderedSettings, setRenderedSettings] = useState(settings);
   const displaySettings = useMemo(() => ({ ...renderedSettings, theme: settings.theme }), [renderedSettings, settings.theme]);
   const [error, setError] = useState<string | null>(null);

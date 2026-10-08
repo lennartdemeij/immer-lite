@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { TextBlock } from '../../types/book';
 import type { ReaderSettings } from '../../types/reader';
-import { buildRichSlice, measureTextSlice, renderTextSlice, restoreCollapsedSpacesForRender } from './pretextLayout';
+import { buildRichSlice, measureTextSlice, renderTextSlice, restoreCollapsedSpacesForRender, restoreHyphenatedLines } from './pretextLayout';
+import { prepareHyphenation } from './hyphenation';
 import { prepareRichInline, measureRichInlineStats } from '@chenglou/pretext/rich-inline';
 
 vi.mock('@chenglou/pretext/rich-inline', () => ({
@@ -226,5 +227,70 @@ describe('buildRichSlice', () => {
       expect(block.text.slice(fragment.blockStart, fragment.blockEnd)).toBe(fragment.text);
     }
     expect(fragments.at(-1)?.blockEnd).toBe(24);
+  });
+});
+
+
+describe('hyphenation', () => {
+  function wordBlock(text: string): TextBlock {
+    return { ...makeBlock(), text,
+      inlineContent: [{ id: 'word', text, marks: ['italic'], startOffset: 0, endOffset: text.length }],
+      sentences: [{ id: 'sentence', index: 0, text, inlineIds: ['word'], startOffset: 0, endOffset: text.length }] };
+  }
+
+  it.each(['en', 'nl'])('adds language-specific breaks without changing canonical text (%s)', async (language) => {
+    await prepareHyphenation(language);
+    const block = wordBlock(language === 'nl' ? 'verantwoordelijkheid' : 'extraordinary');
+    const slice = buildRichSlice(block, 0, 1, { ...settings, hyphenation: true, hyphenationLanguage: language });
+    expect(slice.items[0].text).toContain('\u00ad');
+    expect(slice.items[0].text.replace(/\u00ad/g, '')).toBe(block.text);
+    expect(slice.meta[0].text).toBe(block.text);
+    expect(buildRichSlice(block, 0, 1, settings).items[0].text).toBe(block.text);
+  });
+
+  it('keeps canonical offsets through multiple breaks and a literal hyphen', () => {
+    const block = wordBlock('extraordinary well-known example.');
+    const slice = buildRichSlice(block, 0, 1, { ...settings, hyphenation: true });
+    const lines = ['extra-', 'ordi-', 'nary well-', 'known example.'].map((text, index) => ({
+      fragments: [{ itemIndex: 0, text, gapBefore: 0, start: { segmentIndex: index, graphemeIndex: 0 } }]
+    }));
+    const fragments = restoreHyphenatedLines(lines, slice).flatMap((line) => line.fragments);
+    const canonical = fragments.filter((fragment) => fragment.blockStart !== undefined);
+    expect(canonical.map((fragment) => fragment.text).join('')).toBe(block.text);
+    expect(fragments.filter((fragment) => fragment.blockStart === undefined).map((fragment) => fragment.text)).toEqual(['-', '-']);
+    for (const fragment of canonical) expect(block.text.slice(fragment.blockStart, fragment.blockEnd)).toBe(fragment.text);
+    expect(canonical.at(-1)?.blockEnd).toBe(block.text.length);
+  });
+
+  it('preserves source offsets around author-provided soft hyphens', () => {
+    const block = wordBlock('extra\u00adordinary');
+    const slice = buildRichSlice(block, 0, 1, { ...settings, hyphenation: true });
+    const fragments = restoreHyphenatedLines([{ fragments: [{ itemIndex: 0, text: 'extraordinary', gapBefore: 0,
+      start: { segmentIndex: 0, graphemeIndex: 0 } }] }], slice)[0].fragments;
+    expect(fragments.map((fragment) => [fragment.text, fragment.blockStart, fragment.blockEnd])).toEqual([
+      ['extra', 0, 5], ['ordinary', 6, 14]
+    ]);
+  });
+
+  it('keeps styled sentence separators at their original offsets', () => {
+    const block = wordBlock('certain extraordinary. Another example.');
+    block.inlineContent = [
+      { id: 'a', text: 'certain ', marks: [], startOffset: 0, endOffset: 8 },
+      { id: 'b', text: 'extraordinary.', marks: ['italic'], startOffset: 8, endOffset: 22 },
+      { id: 'c', text: 'Another example.', marks: [], startOffset: 23, endOffset: 39 }
+    ];
+    block.sentences = [
+      { id: 'one', index: 0, text: 'certain extraordinary.', inlineIds: ['a', 'b'], startOffset: 0, endOffset: 22 },
+      { id: 'two', index: 1, text: 'Another example.', inlineIds: ['c'], startOffset: 23, endOffset: 39 }
+    ];
+    const slice = buildRichSlice(block, 0, 2, { ...settings, hyphenation: true });
+    const fragments = restoreHyphenatedLines([
+      { fragments: [{ itemIndex: 0, text: 'certain', gapBefore: 0, start: { segmentIndex: 0, graphemeIndex: 0 } }] },
+      { fragments: [{ itemIndex: 1, text: 'extra-', gapBefore: 0, start: { segmentIndex: 0, graphemeIndex: 0 } }] },
+      { fragments: [{ itemIndex: 1, text: 'ordinary.', gapBefore: 0, start: { segmentIndex: 1, graphemeIndex: 0 } },
+        { itemIndex: 2, text: 'Another example.', gapBefore: 8, start: { segmentIndex: 0, graphemeIndex: 0 } }] }
+    ], slice).flatMap((line) => line.fragments).filter((fragment) => fragment.blockStart !== undefined);
+    expect(fragments.map((fragment) => fragment.text).join('')).toBe(block.text);
+    for (const fragment of fragments) expect(block.text.slice(fragment.blockStart, fragment.blockEnd)).toBe(fragment.text);
   });
 });

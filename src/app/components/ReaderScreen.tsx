@@ -304,6 +304,7 @@ export function ReaderScreen({
   const [searchQuery, setSearchQuery] = useState('');
   const [searchMatch, setSearchMatch] = useState<BookSearchResult | null>(null);
   const [searchMatchRects, setSearchMatchRects] = useState<ReaderRectSnapshot[]>([]);
+  const bookInputRef = useRef<HTMLInputElement>(null);
   const toolsRef = useRef<HTMLDivElement>(null);
   const toolsButtonRef = useRef<HTMLButtonElement>(null);
   const searchPanelRef = useRef<HTMLElement>(null);
@@ -1058,7 +1059,7 @@ export function ReaderScreen({
     )
   );
   // Keep tappable labels below the three-row tools menu.
-  const navigationLabelTop = toolsOpen ? (toolsRef.current?.getBoundingClientRect().bottom ?? 62) + 178 : 24;
+  const navigationLabelTop = toolsOpen ? (toolsRef.current?.getBoundingClientRect().bottom ?? 62) + 222 : 24;
   const navigationChapterLabels = useMemo(() => {
     if (!navigatorExpanded || progressTrackHeight <= 0) return [];
     const candidates = portionNavigation.items
@@ -1691,6 +1692,13 @@ export function ReaderScreen({
       className={`reader-shell theme-${settings.theme}`}
       style={{ '--visual-viewport-inset': `${visualViewportInset}px` } as CSSProperties}
     >
+      <input ref={bookInputRef} className="sr-only" type="file"
+        accept=".epub,.pdf,application/epub+zip,application/pdf"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          event.target.value = '';
+          if (file) { setToolsOpen(false); onFileSelected(file); }
+        }} />
       <header className="reader-header">
         <div className="reader-header-copy">
           <p className="reader-kicker">{book.metadata.creator ?? 'Local publication'}</p>
@@ -1722,6 +1730,11 @@ export function ReaderScreen({
             <button ref={settingsButtonRef} type="button" onClick={() => { setToolsOpen(false); setSettingsOpen(true); }}>
               <SettingsIcon /><span>Reading settings</span>
             </button>
+            <button type="button" onClick={() => bookInputRef.current?.click()}>
+              <svg className="reader-tool-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                <path d="M3 5h7l2 3h9v12H3zM3 8h9" strokeLinejoin="round" />
+              </svg><span>Load book</span>
+            </button>
           </nav>
         </div>
       </header>
@@ -1733,7 +1746,7 @@ export function ReaderScreen({
               style={{ top: `${y}px` }} disabled={readAloud.isPlaying || paginationPending}
               aria-label={`Open note: ${annotation.note}${count > 1 ? ` (${count} nearby notes)` : ''}`}
               title={annotation.note}
-              onClick={() => { onJumpToPortion(index); handleAnnotationPress(annotation); setToolsOpen(false); }}>
+              onClick={() => { onJumpToPortion(index); handleAnnotationPress(annotation); }}>
               <BookmarkIcon /><span>{annotation.note}</span>{count > 1 ? <small>+{count - 1}</small> : null}
             </button>
           ))}
@@ -1745,7 +1758,7 @@ export function ReaderScreen({
                 className={`chapter-progress-label${chapter.active ? ' active' : ''}`}
                 style={{ top: `${chapter.y}px` }} disabled={readAloud.isPlaying || paginationPending}
                 aria-label={`Go to ${chapter.label}`}
-                onClick={() => { onJumpToPortion(chapter.index); setToolsOpen(false); }}>
+                onClick={() => { onJumpToPortion(chapter.index); }}>
                 {chapter.label}
               </button>
             ))}
@@ -2090,7 +2103,6 @@ export function ReaderScreen({
         open={settingsOpen}
         settings={requestedSettings}
         onChange={onSettingsChange}
-        onFileSelected={onFileSelected}
       /> : null}
     </div>
   );

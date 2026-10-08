@@ -13,6 +13,7 @@ import type {
   ViewportMetrics
 } from '../../types/reader';
 import { getBlockTypography, getInlineFont } from './styleMap';
+import { hyphenateText } from './hyphenation';
 
 interface RichItemMeta {
   text: string;
@@ -66,7 +67,7 @@ function getPreparedSlice(block: TextBlock, start: number, end: number, settings
     cache = { fontSize: settings.fontSize, slices: new Map() };
     preparedSlices.set(block, cache);
   }
-  const key = `${start}:${end}`;
+  const key = `${start}:${end}:${Boolean(settings.hyphenation)}:${settings.hyphenationLanguage ?? ''}`;
   let entry = cache.slices.get(key);
   if (!entry) {
     const slice = buildRichSlice(block, start, end, settings);
@@ -108,10 +109,12 @@ function getSentenceInlineSlice(
 
 function normalizeSentenceInlines(inlines: BookInline[]): BookInline[] {
   const trimmed = inlines
-    .map((inline, index) => {
+    .map((inline, index): BookInline | null => {
       let text = inline.text;
+      let startOffset = inline.startOffset;
       if (index === 0) {
         text = text.replace(/^\s+/, '');
+        if (typeof startOffset === 'number') startOffset += inline.text.length - text.length;
       }
       if (index === inlines.length - 1) {
         text = text.replace(/\s+$/, '');
@@ -121,7 +124,8 @@ function normalizeSentenceInlines(inlines: BookInline[]): BookInline[] {
       }
       return {
         ...inline,
-        text
+        text,
+        startOffset
       };
     })
     .filter((value): value is BookInline => Boolean(value));
@@ -199,9 +203,12 @@ export function buildRichSlice(
 
     sentenceInlines.forEach((inline) => {
       items.push({
-        text: inline.text,
+        text: settings.hyphenation && !inline.href && block.kind !== 'heading'
+          ? hyphenateText(inline.text, settings.hyphenationLanguage)
+          : inline.text.replace(/\u00ad/g, ''),
         font: getInlineFont(settings, inline.marks, block.kind)
       });
+      const leadingSpaceOffset = (inline as BookInline & { leadingSpaceOffset?: number }).leadingSpaceOffset;
       meta.push({
         text: inline.text,
         font: getInlineFont(settings, inline.marks, block.kind),
@@ -209,7 +216,7 @@ export function buildRichSlice(
         href: inline.href,
         blockStart: inline.startOffset,
         blockEnd: inline.endOffset,
-        leadingSpaceOffset: (inline as BookInline & { leadingSpaceOffset?: number }).leadingSpaceOffset
+        leadingSpaceOffset
       });
     });
   }
@@ -304,6 +311,65 @@ export function restoreCollapsedSpacesForRender(
   return renderedLines;
 }
 
+// Pretext hides soft hyphens and adds a visible dash only at a chosen break.
+// Keep that dash separate from canonical text so selection/search/TTS offsets
+// never count layout-only characters.
+export function restoreHyphenatedLines(lines: MaterializedRichLine[], slice: RichSlice): RenderLine[] {
+  const cursors = new Map<number, number>();
+  const rendered: RenderLine[] = [];
+  const sources = slice.meta.map((meta) => {
+    const start = meta.leadingSpaceOffset ?? meta.blockStart ?? 0;
+    const offsets: number[] = [];
+    let text = '';
+    for (let index = 0; index < meta.text.length; index += 1) {
+      if (meta.text[index] === '\u00ad') continue;
+      text += meta.text[index];
+      offsets.push(start + index);
+    }
+    return { text, offsets };
+  });
+  for (const [lineIndex, line] of lines.entries()) {
+    const fragments: RenderFragment[] = [];
+    const appendSource = (itemIndex: number, start: number, end: number, target = fragments) => {
+      const meta = slice.meta[itemIndex];
+      const { text: source, offsets } = sources[itemIndex];
+      for (let run = start; run < end;) {
+        let stop = run + 1;
+        while (stop < end && offsets[stop] === offsets[stop - 1] + 1) stop += 1;
+        target.push({ key: `hyphen-${lineIndex}-${target.length}`, text: source.slice(run, stop),
+          font: meta.font, marks: meta.marks, href: meta.href,
+          blockStart: typeof meta.blockStart === 'number' ? offsets[run] : undefined,
+          blockEnd: typeof meta.blockStart === 'number' ? offsets[stop - 1] + 1 : undefined });
+        run = stop;
+      }
+    };
+    for (const fragment of line.fragments) {
+      const meta = slice.meta[fragment.itemIndex];
+      const source = sources[fragment.itemIndex].text;
+      const cursor = cursors.get(fragment.itemIndex) ?? 0;
+      const visible = fragment.text.replace(/\u00ad/g, '');
+      const fullStart = source.indexOf(visible, cursor);
+      const withoutDash = visible.endsWith('-') ? visible.slice(0, -1) : null;
+      const brokenStart = withoutDash ? source.indexOf(withoutDash, cursor) : -1;
+      const generatedDash = brokenStart >= 0 && (fullStart < 0 || brokenStart < fullStart);
+      const text = generatedDash ? withoutDash! : visible;
+      const start = generatedDash ? brokenStart : fullStart;
+      if (start < 0) throw new Error('Unable to map hyphenated text to the publication');
+      if (start > cursor && /^\s+$/.test(source.slice(cursor, start))) {
+        // Retain collapsed separators for cross-line selection and search.
+        const previous = fragments.length ? fragments : rendered.at(-1)?.fragments;
+        if (previous?.length) appendSource(fragment.itemIndex, cursor, start, previous);
+      }
+      appendSource(fragment.itemIndex, start, start + text.length);
+      if (generatedDash) fragments.push({ key: `hyphen-${lineIndex}-${fragments.length}`,
+        text: '-', font: meta.font, marks: meta.marks, href: meta.href });
+      cursors.set(fragment.itemIndex, start + text.length);
+    }
+    rendered.push({ key: `line-${lineIndex}`, fragments });
+  }
+  return rendered;
+}
+
 function materializeLines(
   entry: PreparedSlice,
   width: number
@@ -327,7 +393,9 @@ function materializeLines(
     });
   });
 
-  entry.lines = restoreCollapsedSpacesForRender(materializedLines, slice);
+  entry.lines = slice.items.some((item, index) => item.text.includes('\u00ad') || slice.meta[index].text.includes('\u00ad'))
+    ? restoreHyphenatedLines(materializedLines, slice)
+    : restoreCollapsedSpacesForRender(materializedLines, slice);
   entry.lineCount = entry.lines.length;
   return entry.lines;
 }

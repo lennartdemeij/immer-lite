@@ -13,6 +13,7 @@ import {
   renderTextSlice
 } from './pretextLayout';
 import { getBlockTypography } from './styleMap';
+import { prepareHyphenation } from './hyphenation';
 
 interface Cursor {
   sectionIndex: number;
@@ -329,6 +330,11 @@ export async function paginateBook(
   startAnchor?: ReaderAnchor,
   options: PaginationOptions = {}
 ): Promise<PaginationResult> {
+  if (settings.hyphenation) {
+    settings = { ...settings, hyphenationLanguage: book.metadata.language ?? 'en' };
+    await prepareHyphenation(settings.hyphenationLanguage);
+    options.signal?.throwIfAborted();
+  }
   const prioritySection = options.onPreview && startAnchor
     ? book.sections.findIndex((section) => section.blocks.some((block) => block.id === startAnchor.blockId))
     : -1;

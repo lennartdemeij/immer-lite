@@ -6,6 +6,8 @@ export interface ReaderSettings {
   horizontalPadding: number;
   theme: ThemeMode;
   speechRate?: number;
+  hyphenation?: boolean;
+  hyphenationLanguage?: string;
 }
 
 export interface ViewportMetrics {

@@ -117,42 +117,6 @@ const TextSlice = memo(function TextSlice({
             {line.fragments.map((fragment) => {
               const classNames = fragment.marks.map((mark) => `mark-${mark}`).join(' ');
               const segments = splitFragmentByAnnotations(fragment, blockAnnotations);
-              if (fragment.href) {
-                return (
-                  <a
-                    key={fragment.key}
-                    className={classNames}
-                    href={fragment.href}
-                    target="_blank"
-                    rel="noreferrer"
-                    style={{ font: fragment.font }}
-                    data-block-start={fragment.blockStart}
-                    data-block-end={fragment.blockEnd}
-                  >
-                    {segments.map((segment, segmentIndex) => (
-                      <span
-                        key={`${fragment.key}-segment-${segmentIndex}`}
-                        className={segment.annotation ? 'annotation-text' : undefined}
-                        data-block-start={segment.start}
-                        data-block-end={segment.end}
-                        data-annotation-id={segment.annotation?.id}
-                        data-reader-interactive={segment.annotation ? 'true' : undefined}
-                        onClick={
-                          segment.annotation && onAnnotationPress
-                            ? (event) => {
-                                event.stopPropagation();
-                                onAnnotationPress(segment.annotation!);
-                              }
-                            : undefined
-                        }
-                      >
-                        {segment.text}
-                      </span>
-                    ))}
-                  </a>
-                );
-              }
-
               return (
                 <span key={fragment.key} className={classNames} style={{ font: fragment.font }}>
                   {segments.map((segment, segmentIndex) => (

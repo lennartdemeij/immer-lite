@@ -1,4 +1,3 @@
-import { useRef } from 'react';
 import type { RefObject } from 'react';
 import type { ReaderSettings } from '../../types/reader';
 
@@ -6,7 +5,6 @@ interface SettingsPanelProps {
   open: boolean;
   settings: ReaderSettings;
   onChange: (next: ReaderSettings) => void;
-  onFileSelected: (file: File) => void;
   panelRef?: RefObject<HTMLElement>;
 }
 
@@ -14,44 +12,14 @@ export function SettingsPanel({
   open,
   settings,
   onChange,
-  onFileSelected,
   panelRef
 }: SettingsPanelProps) {
-  const inputRef = useRef<HTMLInputElement | null>(null);
-
-  function acceptFile(fileList: FileList | null) {
-    const file = fileList?.[0];
-    if (!file) {
-      return;
-    }
-
-    onFileSelected(file);
-  }
-
   return (
     <aside
       ref={panelRef}
       className={`settings-panel ${open ? 'open' : ''}`}
     >
       <div className="settings-panel-inner">
-        <div className="settings-group">
-          <span>Book</span>
-          <button
-            type="button"
-            className="settings-upload-button"
-            onClick={() => inputRef.current?.click()}
-          >
-            Load another file
-          </button>
-          <input
-            ref={inputRef}
-            className="sr-only"
-            type="file"
-            accept=".epub,.pdf,application/epub+zip,application/pdf"
-            onChange={(event) => acceptFile(event.target.files)}
-          />
-        </div>
-
         <div className="settings-group">
           <label>
             <span>Font size</span>
@@ -106,6 +74,14 @@ export function SettingsPanel({
                 })
               }
             />
+          </label>
+        </div>
+
+        <div className="settings-group">
+          <label className="settings-checkbox">
+            <span>Hyphenation</span>
+            <input type="checkbox" checked={settings.hyphenation ?? false}
+              onChange={(event) => onChange({ ...settings, hyphenation: event.target.checked })} />
           </label>
         </div>
 
