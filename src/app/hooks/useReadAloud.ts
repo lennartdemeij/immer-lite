@@ -156,9 +156,13 @@ export function useReadAloud(options: ReadAloudOptions) {
         return;
       }
       finish();
-      setError(code === 'not-allowed'
-        ? 'Reading was blocked by the browser. Tap Play to try again (not-allowed).'
-        : `Unable to read aloud (${code}). Try Play again; if it still fails, check your device’s text-to-speech engine.`);
+      if (code === 'synthesis-failed' && /Android/i.test(navigator.userAgent)) {
+        setError('Speech could not start (synthesis-failed). Fully close and reopen your browser, then try Play again.');
+      } else {
+        setError(code === 'not-allowed'
+          ? 'Reading was blocked by the browser. Tap Play to try again (not-allowed).'
+          : `Unable to read aloud (${code}). Try Play again; if it still fails, check your device’s text-to-speech engine.`);
+      }
     };
     state.utterance = utterance;
     try {
