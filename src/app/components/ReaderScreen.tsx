@@ -302,6 +302,7 @@ export function ReaderScreen({
     canGoNext: Boolean(nextPortion), paginationPending, onNext
   });
   const [spokenWordRects, setSpokenWordRects] = useState<ReaderRectSnapshot[]>([]);
+  const [spokenSentenceRects, setSpokenSentenceRects] = useState<ReaderRectSnapshot[]>([]);
   const [dragOffset, setDragOffset] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const [snapDirection, setSnapDirection] = useState<SnapDirection | null>(null);
@@ -498,6 +499,7 @@ export function ReaderScreen({
   }
 
   function animateToNeighbor(direction: SnapDirection) {
+    if (readAloud.isPlaying) return;
     const stageHeight = stageRef.current?.clientHeight ?? 0;
     if (stageHeight <= 0) {
       if (settleHapticPendingRef.current) {
@@ -523,7 +525,7 @@ export function ReaderScreen({
   }
 
   function navigateByTap(clientY: number) {
-    if (clientY >= 0 && nextPortion) {
+    if (!readAloud.isPlaying && clientY >= 0 && nextPortion) {
       triggerReaderHaptic();
       animateToNeighbor('forward');
     }
@@ -531,7 +533,11 @@ export function ReaderScreen({
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if ((event.target as HTMLElement | null)?.closest('input, textarea, select, [contenteditable="true"]')) {
+      if ((event.target as HTMLElement | null)?.closest('button, a, input, textarea, select, [contenteditable="true"]')) {
+        return;
+      }
+      if (readAloud.isPlaying) {
+        if (['ArrowDown', 'PageDown', ' ', 'ArrowUp', 'PageUp'].includes(event.key)) event.preventDefault();
         return;
       }
       if (isDragging || snapDirection) {
@@ -559,7 +565,26 @@ export function ReaderScreen({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isDragging, nextPortion, onNext, onPrevious, previousPortion, snapDirection]);
+  }, [readAloud.isPlaying, isDragging, nextPortion, onNext, onPrevious, previousPortion, snapDirection]);
+
+  useEffect(() => {
+    if (!readAloud.isPlaying) return;
+    clearSnapTimeout();
+    clearDragAnimationFrame();
+    clearLongPressTimeout();
+    pointerState.current = null;
+    progressPointerIdRef.current = null;
+    progressDragRef.current = null;
+    settleHapticPendingRef.current = false;
+    isDraggingRef.current = false;
+    flushDragOffset(0);
+    setIsDragging(false);
+    setSnapDirection(null);
+    setTransitionEnabled(false);
+    setProgressDragging(false);
+    setProgressDragOffset(0);
+    setProgressTilt(getNeutralProgressTilt());
+  }, [readAloud.isPlaying]);
 
   useEffect(() => {
     return () => {
@@ -616,6 +641,13 @@ export function ReaderScreen({
     const range = scope && word && createAnnotationRange(scope, word.blockId, word.startOffset, word.endOffset);
     setSpokenWordRects(scope && range ? captureRangeRectSnapshots(range, scope) : []);
   }, [readAloud.spokenWord, portion, viewport]);
+
+  useEffect(() => {
+    const scope = currentPaneRef.current;
+    const sentence = readAloud.spokenSentence;
+    const range = scope && sentence && createAnnotationRange(scope, sentence.blockId, sentence.startOffset, sentence.endOffset);
+    setSpokenSentenceRects(scope && range ? captureRangeRectSnapshots(range, scope) : []);
+  }, [readAloud.spokenSentence, portion, viewport]);
 
   useEffect(() => {
     if (!selectionDraft) {
@@ -1230,6 +1262,7 @@ export function ReaderScreen({
   function updateProgressDragFromPointer(
     event: React.PointerEvent<HTMLDivElement>
   ): number | null {
+    if (readAloud.isPlaying) return null;
     const dragState = progressDragRef.current;
     if (
       progressPointerIdRef.current !== event.pointerId ||
@@ -1349,6 +1382,10 @@ export function ReaderScreen({
 
   function handlePointerMove(event: React.PointerEvent<HTMLElement>) {
     if (moveTouchSelection(event)) return;
+    if (readAloud.isPlaying) {
+      clearLongPressTimeout();
+      return;
+    }
     const state = pointerState.current;
     if (!state || state.pointerId !== event.pointerId || snapDirection || longPressTriggeredRef.current) {
       return;
@@ -1400,6 +1437,7 @@ export function ReaderScreen({
 
     clearLongPressTimeout();
     pointerState.current = null;
+    if (readAloud.isPlaying) return;
     if (longPressTriggeredRef.current) {
       longPressTriggeredRef.current = false;
       return;
@@ -1443,6 +1481,7 @@ export function ReaderScreen({
   }
 
   function handleTrackTransitionEnd(event: React.TransitionEvent<HTMLDivElement>) {
+    if (readAloud.isPlaying) return;
     if (
       event.target !== currentPaneRef.current ||
       event.propertyName !== 'transform'
@@ -1480,6 +1519,7 @@ export function ReaderScreen({
   function handleProgressPointerDown(event: React.PointerEvent<HTMLDivElement>) {
     event.preventDefault();
     event.stopPropagation();
+    if (readAloud.isPlaying) return;
     if (portionNavigation.items.length === 0 || progressTrackHeight <= 0) {
       return;
     }
@@ -1566,6 +1606,7 @@ export function ReaderScreen({
         <div
           ref={progressTrackRef}
           className={`chapter-progress-track ${progressDragging ? 'dragging' : ''}`}
+          aria-disabled={readAloud.isPlaying}
           onPointerDown={handleProgressPointerDown}
           onPointerMove={handleProgressPointerMove}
           onPointerUp={handleProgressPointerEnd}
@@ -1728,8 +1769,12 @@ export function ReaderScreen({
                   hideLeadingBoundarySceneBreak={hasSceneBreakBoundary(previousPortion, portion)}
                   hideTrailingBoundarySceneBreak={endsWithSceneBreak(portion)}
                 />
-                {spokenWordRects.length > 0 ? (
+                {spokenSentenceRects.length > 0 || spokenWordRects.length > 0 ? (
                   <div className="annotation-live-overlay speech-word-overlay" aria-hidden="true">
+                    {spokenSentenceRects.map((rect, index) => (
+                      <div key={`spoken-sentence-${index}`} className="speech-sentence-highlight"
+                        style={{ left: `${rect.x}%`, top: `${rect.y}%`, width: `${rect.width}%`, height: `${rect.height}%` }} />
+                    ))}
                     {spokenWordRects.map((rect, index) => (
                       <div key={`spoken-word-${index}`} className="speech-word-highlight"
                         style={{ left: `${rect.x}%`, top: `${rect.y}%`, width: `${rect.width}%`, height: `${rect.height}%` }} />

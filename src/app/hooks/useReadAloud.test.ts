@@ -145,8 +145,11 @@ describe('read aloud', () => {
     expect(current().text).toBe('Hello wonderful world.');
     start();
     expect(result.spokenWord?.startOffset).toBe(0);
+    expect(result.spokenSentence).toEqual({ blockId: block.id, startOffset: 0, endOffset: 22 });
+    const firstSentence = result.spokenSentence;
     act(() => vi.advanceTimersByTime(325));
     expect(result.spokenWord?.startOffset).toBe(6);
+    expect(result.spokenSentence).toBe(firstSentence);
     act(() => vi.advanceTimersByTime(424));
     expect(result.spokenWord?.startOffset).toBe(6);
     act(() => vi.advanceTimersByTime(1));
@@ -155,9 +158,11 @@ describe('read aloud', () => {
     expect(current().text).toBe('Next sentence.');
     start();
     expect(result.spokenWord?.startOffset).toBe(23);
+    expect(result.spokenSentence).toEqual({ blockId: block.id, startOffset: 23, endOffset: text.length });
     end();
     expect(result.isPlaying).toBe(false);
     expect(result.spokenWord).toBeNull();
+    expect(result.spokenSentence).toBeNull();
   });
 
   it('uses real word boundaries instead of estimated timing when the engine provides them', () => {

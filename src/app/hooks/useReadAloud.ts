@@ -20,6 +20,14 @@ export function useReadAloud(options: ReadAloudOptions) {
   latest.current = { ...options, chunks, key };
   const [isPlaying, setIsPlaying] = useState(false);
   const [spokenWord, setSpokenWord] = useState<SpokenWord | null>(null);
+  const spokenChunk = useMemo(() => spokenWord && chunks.find((chunk) => chunk.words.some((word) =>
+    word.blockId === spokenWord.blockId && word.startOffset === spokenWord.startOffset)), [chunks, spokenWord]);
+  const spokenSentence = useMemo<SpokenWord | null>(() => {
+    if (!spokenChunk) return null;
+    const first = spokenChunk.words[0];
+    const startOffset = first.startOffset - first.charStart;
+    return { blockId: first.blockId, startOffset, endOffset: startOffset + spokenChunk.text.length };
+  }, [spokenChunk]);
   const [error, setError] = useState<string | null>(null);
   const wordTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const playback = useRef({
@@ -246,5 +254,5 @@ export function useReadAloud(options: ReadAloudOptions) {
     cancelUtterance();
   }, []);
 
-  return { supported, isPlaying, spokenWord, error, toggle };
+  return { supported, isPlaying, spokenWord, spokenSentence, error, toggle };
 }

@@ -536,11 +536,16 @@ button {
   color: var(--accent);
 }
 
+.speech-sentence-highlight,
 .speech-word-highlight {
   position: absolute;
   border-radius: 3px;
   background: var(--navigator-current);
-  opacity: 0.32;
+  opacity: 0.42;
+}
+
+.speech-sentence-highlight {
+  opacity: 0.14;
 }
 
 .read-aloud-heading,
