@@ -60,6 +60,7 @@ interface PointerState {
   pointerId: number;
   x: number;
   y: number;
+  startedAt: number;
   moved: boolean;
   startedOnInteractive: boolean;
 }
@@ -94,8 +95,8 @@ type NavigatorWithVibration = Navigator & {
 };
 
 const TAP_TOLERANCE = 10;
-const SNAP_THRESHOLD_RATIO = 0.18;
-const SNAP_THRESHOLD_PX = 84;
+const SNAP_THRESHOLD_RATIO = 0.06;
+const SNAP_THRESHOLD_PX = 32;
 const SNAP_ANIMATION_MS = 240;
 const PORTION_NAV_ITEM_HEIGHT_PX = 4;
 const CHAPTER_TRACK_GAP_PX = 3;
@@ -1459,6 +1460,7 @@ export function ReaderScreen({
       pointerId: event.pointerId,
       x: event.clientX,
       y: event.clientY,
+      startedAt: performance.now(),
       moved: false,
       startedOnInteractive: Boolean(interactiveTarget)
     };
@@ -1577,18 +1579,20 @@ export function ReaderScreen({
       return;
     }
 
-    const threshold = Math.max(
+    const threshold = Math.min(48, Math.max(
       SNAP_THRESHOLD_PX,
       (stageRef.current?.clientHeight ?? viewport?.height ?? 0) * SNAP_THRESHOLD_RATIO
-    );
+    ));
+    const vertical = Math.abs(deltaY) >= Math.abs(deltaX);
+    const flick = Math.abs(deltaY) >= 18 && Math.abs(deltaY) / Math.max(1, performance.now() - state.startedAt) >= 0.35;
 
-    if (deltaY <= -threshold && nextPortion) {
+    if (vertical && deltaY < 0 && (deltaY <= -threshold || flick) && nextPortion) {
       settleHapticPendingRef.current = true;
       animateToNeighbor('forward');
       return;
     }
 
-    if (deltaY >= threshold && previousPortion) {
+    if (vertical && deltaY > 0 && (deltaY >= threshold || flick) && previousPortion) {
       settleHapticPendingRef.current = true;
       animateToNeighbor('backward');
       return;

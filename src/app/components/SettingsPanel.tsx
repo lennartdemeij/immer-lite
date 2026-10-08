@@ -95,12 +95,14 @@ export function SettingsPanel({
 
         <div className="settings-group">
           <span>Theme</span>
-          <div className="theme-row">
-            {(['light', 'sepia', 'dark'] as const).map((theme) => (
+          <div className="theme-picker" role="group" aria-label="Color theme">
+            {(['light', 'sepia', 'dark', 'mist', 'sage', 'rose', 'midnight'] as const).map((theme) => (
               <button
                 key={theme}
                 type="button"
-                className={settings.theme === theme ? 'active' : ''}
+                className={`theme-preview theme-${theme}${settings.theme === theme ? ' active' : ''}`}
+                aria-pressed={settings.theme === theme}
+                aria-label={`${theme[0].toUpperCase()}${theme.slice(1)} theme`}
                 onClick={() =>
                   onChange({
                     ...settings,
@@ -108,7 +110,9 @@ export function SettingsPanel({
                   })
                 }
               >
-                {theme}
+                <span className="theme-preview-type" aria-hidden="true">Aa</span>
+                <span className="theme-preview-line" aria-hidden="true" />
+                <span className="theme-preview-name">{theme}</span>
               </button>
             ))}
           </div>

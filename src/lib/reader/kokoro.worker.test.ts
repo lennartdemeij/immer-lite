@@ -1,6 +1,6 @@
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
 
-const runtime = vi.hoisted(() => ({ load: vi.fn(), generate: vi.fn(), dispose: vi.fn() }));
+const runtime = vi.hoisted(() => ({ load: vi.fn(), generate: vi.fn() }));
 vi.mock('kokoro-js', () => ({ KokoroTTS: { from_pretrained: runtime.load } }));
 vi.mock('@huggingface/transformers', () => ({ env: { backends: { onnx: { wasm: {} } } } }));
 let messages: ReturnType<typeof vi.fn>;
@@ -10,8 +10,7 @@ beforeEach(async () => {
   vi.resetModules();
   vi.clearAllMocks();
   runtime.generate.mockResolvedValue({ audio: new Float32Array(24000) });
-  runtime.dispose.mockResolvedValue(undefined);
-  runtime.load.mockResolvedValue({ generate: runtime.generate, model: { dispose: runtime.dispose } });
+  runtime.load.mockResolvedValue({ generate: runtime.generate });
   messages = vi.fn();
   vi.stubGlobal('postMessage', messages);
   requestAdapter = vi.fn().mockResolvedValue({});
@@ -20,39 +19,43 @@ beforeEach(async () => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-async function generate(cpuOnly = false) {
-  self.onmessage?.call(self, { data: { id: 1, text: 'Hello world.', voice: 'af_heart', speed: 1, cpuOnly } } as MessageEvent);
-  await vi.waitFor(() => expect(messages).toHaveBeenCalledWith(
-    expect.objectContaining({ id: 1, type: 'audio' }), expect.anything()
-  ));
+async function generate(id = 1, text = 'Hello world.', type = 'audio') {
+  self.onmessage?.call(self, { data: { id, text, voice: 'am_echo', speed: 1 } } as MessageEvent);
+  await vi.waitFor(() => expect(messages.mock.calls.some(([reply]) => reply.id === id && reply.type === type)).toBe(true));
 }
 
-it('uses GPU inference when an adapter is available', async () => {
+it('always uses the compact model, even when WebGPU is available, with Echo', async () => {
   await generate();
-  expect(runtime.load).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ device: 'webgpu', dtype: 'fp32' }));
-});
-
-it('never allocates the large GPU model when the device requests the compact route', async () => {
-  await generate(true);
   expect(requestAdapter).not.toHaveBeenCalled();
   expect(runtime.load).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ device: 'wasm', dtype: 'q8' }));
+  expect(runtime.generate).toHaveBeenCalledWith('Hello world.', { voice: 'am_echo', speed: 1 });
 });
 
-it('uses the small CPU model when WebGPU is unavailable', async () => {
-  vi.stubGlobal('navigator', {});
+it('reuses the loaded model for subsequent sentences', async () => {
   await generate();
-  expect(runtime.load).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ device: 'wasm', dtype: 'q8' }));
+  await generate(2, 'Next sentence.');
+  expect(runtime.load).toHaveBeenCalledOnce();
+  expect(runtime.generate).toHaveBeenCalledTimes(2);
 });
 
-it('falls back to CPU if the GPU model cannot initialize', async () => {
-  runtime.load.mockRejectedValueOnce(new Error('Unsupported GPU'));
-  await generate();
-  expect(runtime.load).toHaveBeenLastCalledWith(expect.any(String), expect.objectContaining({ device: 'wasm', dtype: 'q8' }));
+it('retries model initialization after a failed download', async () => {
+  runtime.load.mockRejectedValueOnce(new Error('Network error'));
+  await generate(1, 'Hello world.', 'error');
+  await generate(2);
+  expect(runtime.load).toHaveBeenCalledTimes(2);
 });
 
-it('falls back to CPU if GPU inference fails', async () => {
-  runtime.generate.mockRejectedValueOnce(new Error('GPU lost'));
-  await generate();
-  expect(runtime.load).toHaveBeenLastCalledWith(expect.any(String), expect.objectContaining({ device: 'wasm', dtype: 'q8' }));
-  expect(runtime.dispose).toHaveBeenCalledOnce();
+it('a failed sentence does not block subsequent generation', async () => {
+  runtime.generate.mockRejectedValueOnce(new Error('Inference failed'));
+  await generate(1, 'Hello world.', 'error');
+  await generate(2);
+  expect(runtime.load).toHaveBeenCalledOnce();
+});
+
+it('preserves all text and audio when a sentence exceeds the model context', async () => {
+  const text = 'A long sentence with many words '.repeat(30);
+  await generate(1, text);
+  expect(runtime.generate.mock.calls.map(([part]) => part).join('')).toBe(text);
+  const reply = messages.mock.calls.find(([reply]) => reply.type === 'audio')![0];
+  expect(reply.samples.length).toBe(runtime.generate.mock.calls.length * 24000);
 });

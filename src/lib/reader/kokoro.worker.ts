@@ -9,17 +9,12 @@ env.allowLocalModels = false;
 
 let model: Promise<KokoroTTS> | null = null;
 let queue = Promise.resolve();
-let backend: 'wasm' | 'webgpu' = 'wasm';
 
-async function loadModel(id: number, cpuOnly = false): Promise<KokoroTTS> {
-  const gpu = (navigator as Navigator & { gpu?: { requestAdapter(): Promise<unknown> } }).gpu;
-  const adapter = !cpuOnly && gpu ? await gpu.requestAdapter().catch(() => null) : null;
-  backend = adapter ? 'webgpu' : 'wasm';
+async function loadModel(id: number): Promise<KokoroTTS> {
   self.postMessage({ id, type: 'progress', message: 'Preparing AI voice…' });
   try {
     return await KokoroTTS.from_pretrained('onnx-community/Kokoro-82M-v1.0-ONNX', {
-      // Kokoro recommends fp32 for GPU inference; retain the small q8 CPU fallback.
-      dtype: backend === 'webgpu' ? 'fp32' : 'q8', device: backend,
+      dtype: 'q8', device: 'wasm',
       progress_callback: (progress: { status: string; file?: string; progress?: number }) => {
         if (!progress.file?.endsWith('.onnx')) return;
         if (progress.status === 'initiate') self.postMessage({ id, type: 'progress', message: 'Downloading AI voice…' });
@@ -28,13 +23,12 @@ async function loadModel(id: number, cpuOnly = false): Promise<KokoroTTS> {
       }
     });
   } catch (error) {
-    if (backend === 'webgpu') return loadModel(id, true);
     model = null;
     throw error;
   }
 }
 
-async function generate(tts: KokoroTTS, text: string, voice: 'af_heart' | 'bf_emma', speed: number) {
+async function generate(tts: KokoroTTS, text: string, voice: 'am_echo', speed: number) {
   // Kokoro truncates beyond its context window. Keep every word in long sentences.
   const parts = text.match(/.{1,300}(?:\s|$)|\S+/gs) ?? [text];
   const recordings: Float32Array[] = [];
@@ -45,23 +39,14 @@ async function generate(tts: KokoroTTS, text: string, voice: 'af_heart' | 'bf_em
   return samples;
 }
 
-self.onmessage = ({ data }: MessageEvent<{ id: number; text: string; voice: 'af_heart' | 'bf_emma'; speed: number; cpuOnly?: boolean }>) => {
+self.onmessage = ({ data }: MessageEvent<{ id: number; text: string; voice: 'am_echo'; speed: number }>) => {
   // Serialize inference while playback consumes the rolling sentence buffer.
   queue = queue.then(async () => {
     const { id, text, voice, speed } = data;
     try {
-      if (!model) model = loadModel(id, data.cpuOnly);
+      if (!model) model = loadModel(id);
       const tts = await model;
-      let samples: Float32Array;
-      try {
-        samples = await generate(tts, text, voice, speed);
-      } catch (error) {
-        if (backend !== 'webgpu') throw error;
-        // A GPU may be available but fail on this model/device. Retry safely on CPU.
-        await tts.model.dispose().catch(() => {});
-        model = loadModel(id, true);
-        samples = await generate(await model, text, voice, speed);
-      }
+      const samples = await generate(tts, text, voice, speed);
       self.postMessage({ id, type: 'audio', samples, sampleRate: 24000 },
         { transfer: [samples.buffer] });
     } catch {

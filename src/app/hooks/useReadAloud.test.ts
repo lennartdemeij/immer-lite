@@ -96,11 +96,47 @@ afterEach(() => {
 });
 
 describe('read aloud', () => {
+  it('buffers a slow next sentence before starting a short sentence, then advances without waiting', async () => {
+    let resolveNext!: (value: object) => void;
+    const nextAudio = new Promise((resolve) => { resolveNext = resolve; });
+    ai.generate.mockImplementation((sentence: string) => sentence === 'Next sentence.'
+      ? nextAudio : Promise.resolve({ samples: new Float32Array(24000), sampleRate: 24000 }));
+    render({ engine: 'ai', portion: page(0, text.length) });
+    await act(async () => result.toggle());
+    expect(ai.generate).toHaveBeenCalledWith('Next sentence.', expect.any(String), 1);
+    expect(ai.play).not.toHaveBeenCalled();
+    await act(async () => resolveNext({ samples: new Float32Array(240000), sampleRate: 24000 }));
+    expect(ai.play).toHaveBeenCalledOnce();
+    await act(async () => ai.play.mock.calls[0][2]());
+    expect(ai.play).toHaveBeenCalledTimes(2);
+    expect(result.status).toBeNull();
+  });
+
   it('prepares sentences across the next page boundary while this page is playing', async () => {
     render({ engine: 'ai', canGoNext: true, nextPortion: page(23, text.length) });
     await act(async () => result.toggle());
-    expect(ai.generate).toHaveBeenCalledWith('Next sentence.', 'af_heart', 1);
+    expect(ai.generate).toHaveBeenCalledWith('Next sentence.', 'am_echo', 1);
     expect(options.onNext).not.toHaveBeenCalled();
+  });
+
+  it('does not start playback after pausing while the next sentence is buffering', async () => {
+    let resolveNext!: (value: object) => void;
+    ai.generate.mockImplementation((sentence: string) => sentence === 'Next sentence.'
+      ? new Promise((resolve) => { resolveNext = resolve; })
+      : Promise.resolve({ samples: new Float32Array(24000), sampleRate: 24000 }));
+    render({ engine: 'ai', portion: page(0, text.length) });
+    await act(async () => result.toggle());
+    expect(result.status).toContain('Buffering');
+    act(() => result.toggle());
+    await act(async () => resolveNext({ samples: new Float32Array(24000), sampleRate: 24000 }));
+    expect(ai.play).not.toHaveBeenCalled();
+    expect(result.isPlaying).toBe(false);
+  });
+
+  it('uses Echo for British English books too', async () => {
+    render({ engine: 'ai', book: { ...book, metadata: { ...book.metadata, language: 'en-GB' } } });
+    await act(async () => result.toggle());
+    expect(ai.generate).toHaveBeenCalledWith('Hello wonderful world.', 'am_echo', 1);
   });
 
   it('reuses full sentence audio when resuming at a later word', async () => {
@@ -109,7 +145,7 @@ describe('read aloud', () => {
     act(() => vi.advanceTimersByTime(1000));
     act(() => result.toggle());
     await act(async () => result.toggle());
-    expect(ai.generate).toHaveBeenLastCalledWith('Hello wonderful world.', 'af_heart', 1);
+    expect(ai.generate).toHaveBeenLastCalledWith('Hello wonderful world.', 'am_echo', 1);
     expect(ai.play.mock.calls.at(-1)?.[3]).toBeGreaterThan(0);
   });
 
@@ -117,8 +153,8 @@ describe('read aloud', () => {
     render({ engine: 'ai', portion: page(0, text.length) });
     await act(async () => result.toggle());
     expect(spoken).toHaveLength(0);
-    expect(ai.generate).toHaveBeenCalledWith('Hello wonderful world.', 'af_heart', 1);
-    expect(ai.generate).toHaveBeenCalledWith('Next sentence.', 'af_heart', 1);
+    expect(ai.generate).toHaveBeenCalledWith('Hello wonderful world.', 'am_echo', 1);
+    expect(ai.generate).toHaveBeenCalledWith('Next sentence.', 'am_echo', 1);
     expect(result.spokenSentence).toEqual({ blockId: block.id, startOffset: 0, endOffset: 22 });
     const weights = estimateWordDurations(getSpeechChunks(book, page(0, 22))[0], 0, 1);
     const firstDuration = 3000 * weights[0] / weights.reduce((sum, weight) => sum + weight, 0);
@@ -151,7 +187,7 @@ describe('read aloud', () => {
     await act(async () => ai.play.mock.calls[0][2]());
     expect(options.onNext).toHaveBeenCalledOnce();
     await act(async () => render({ portion: page(23, text.length), canGoNext: false }));
-    expect(ai.generate).toHaveBeenLastCalledWith('Next sentence.', 'af_heart', 1);
+    expect(ai.generate).toHaveBeenLastCalledWith('Next sentence.', 'am_echo', 1);
     act(() => result.toggle());
     await act(async () => ai.play.mock.calls[1][2]());
     expect(options.onNext).toHaveBeenCalledOnce();
@@ -173,7 +209,7 @@ describe('read aloud', () => {
   it('generates AI speech at the selected speed without altering playback pitch', async () => {
     render({ engine: 'ai', rate: 2 });
     await act(async () => result.toggle());
-    expect(ai.generate).toHaveBeenCalledWith('Hello wonderful world.', 'af_heart', 2);
+    expect(ai.generate).toHaveBeenCalledWith('Hello wonderful world.', 'am_echo', 2);
     expect(ai.play.mock.calls[0][1]).toBe(1);
   });
 

@@ -48,7 +48,7 @@ export function ReadAloudPanel({ open, isPlaying, supported, rate, engine, aiLan
               aria-pressed={engine === 'ai'} onClick={() => onEngineChange('ai')}>AI voice</button>
           </div>
           {engine === 'ai' ? <p className="read-aloud-error">
-            {aiLanguageSupported ? 'Kokoro · English · runs on your device. First use downloads 100–350 MB, depending on your device.'
+            {aiLanguageSupported ? 'Echo · English · runs on your device. First use downloads about 100 MB.'
               : 'Kokoro currently supports English books. Choose Built-in for this book.'}
           </p> : null}
         </div>

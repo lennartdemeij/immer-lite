@@ -11,10 +11,6 @@ type WorkerReply = { id: number } & (
 
 // Created only after an explicit Play with AI voice selected.
 export class KokoroSpeech {
-  // iOS can kill the entire tab while allocating fp32 GPU weights, before any
-  // error handler runs. Detect iPad's desktop UA on the main thread as well.
-  private readonly cpuOnly = /iPad|iPhone|iPod/i.test(navigator.userAgent)
-    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   private worker = new Worker(new URL('./kokoro.worker.ts', import.meta.url), { type: 'module' });
   private context = new AudioContext();
   private source: AudioBufferSourceNode | null = null;
@@ -64,11 +60,11 @@ export class KokoroSpeech {
     const id = ++this.requestId;
     const result = new Promise<SpeechAudio>((resolve, reject) => {
       this.pending.set(id, { resolve, reject });
-      this.worker.postMessage({ id, text, voice, speed, cpuOnly: this.cpuOnly });
+      this.worker.postMessage({ id, text, voice, speed });
     }).catch((error) => { this.cache.delete(key); throw error; });
     this.cache.set(key, result);
     // Keep only a few sentences, never the entire book's audio.
-    if (this.cache.size > (this.cpuOnly ? 4 : 8)) this.cache.delete(this.cache.keys().next().value!);
+    if (this.cache.size > 4) this.cache.delete(this.cache.keys().next().value!);
     return result;
   }
 

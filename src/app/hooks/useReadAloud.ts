@@ -41,6 +41,7 @@ export function useReadAloud(options: ReadAloudOptions) {
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const aiSpeech = useRef<KokoroSpeech | null>(null);
+  const aiBufferKey = useRef<string | null>(null);
   const wordTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const playback = useRef({
     active: false, generation: 0, chunk: 0, word: 0,
@@ -96,7 +97,7 @@ export function useReadAloud(options: ReadAloudOptions) {
     const generation = ++state.generation;
     const current = () => state.active && generation === state.generation;
     const firstWord = state.word;
-    const voice = /en[-_]gb/i.test(latest.current.book.metadata.language ?? '') ? 'bf_emma' : 'af_heart';
+    const voice = 'am_echo';
     const speed = Math.min(2, Math.max(0.5, state.rate));
     try {
       if (!aiSpeech.current) aiSpeech.current = new KokoroSpeech((message) => {
@@ -105,8 +106,23 @@ export function useReadAloud(options: ReadAloudOptions) {
       const speech = aiSpeech.current;
       setStatus('Preparing AI voice…');
       await speech.unlock();
+      if (!current()) return;
       // Reuse the same recording after a pause; don't infer a new sentence suffix.
-      const audio = await speech.generate(chunk.text, voice, speed);
+      const recording = speech.generate(chunk.text, voice, speed);
+      // Queue ahead immediately, including across portions, instead of waiting for playback.
+      const ahead = [...state.chunks.slice(state.chunk + 1), ...latest.current.nextChunks].slice(0, 3);
+      const prepared = ahead.map((next) => speech.generate(next.text, voice, speed).catch(() => null));
+      const audio = await recording;
+      if (!current()) return;
+      const bufferKey = `${state.fingerprint}:${voice}:${speed}`;
+      if (aiBufferKey.current !== bufferKey && prepared.length) {
+        // A short first sentence cannot hide inference of a long second one.
+        // Build a one-sentence lead once; the rolling queue maintains it afterwards.
+        setStatus('Buffering AI voice…');
+        await prepared[0];
+        if (!current()) return;
+      }
+      aiBufferKey.current = bufferKey;
       if (!current()) return;
       const allWeights = estimateWordDurations(chunk, 0, 1);
       const offset = allWeights.slice(0, firstWord).reduce((sum, weight) => sum + weight, 0)
@@ -140,13 +156,11 @@ export function useReadAloud(options: ReadAloudOptions) {
         }, Math.max(0, (elapsed - clock.elapsed()) * 1000));
       };
       schedule(0);
-      // Keep a small rolling buffer, including the next portion's first sentences.
-      const ahead = [...state.chunks.slice(state.chunk + 1), ...latest.current.nextChunks].slice(0, 3);
-      ahead.forEach((next) => { void speech.generate(next.text, voice, speed).catch(() => {}); });
     } catch (cause) {
       if (!current()) return;
       aiSpeech.current?.dispose();
       aiSpeech.current = null;
+      aiBufferKey.current = null;
       finish();
       setError(cause instanceof Error ? cause.message : 'AI voice could not start. Try again or choose Built-in.');
     }
