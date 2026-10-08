@@ -94,16 +94,10 @@ export function readComputedStyleSnapshot(element: Element): BookComputedStyle |
   }
 }
 
-function waitForStyles(frameWindow: Window): Promise<void> {
-  return new Promise((resolve) => {
-    if (typeof frameWindow.requestAnimationFrame === 'function') {
-      frameWindow.requestAnimationFrame(() => {
-        frameWindow.requestAnimationFrame(() => resolve());
-      });
-      return;
-    }
-    setTimeout(resolve, 0);
-  });
+function waitForStyles(): Promise<void> {
+  // WebKit can suspend animation frames in this offscreen iframe. Yield
+  // from the main document instead; getComputedStyle flushes inline styles.
+  return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 function stripResourceAttributes(root: ParentNode): void {
@@ -222,7 +216,7 @@ export async function annotateDocumentsWithComputedStyles(
     };
   });
 
-  await waitForStyles(frameWindow);
+  await waitForStyles();
 
   const results = measurementData.map(({ sourceElements, renderedElements }) => {
     const sharedLength = Math.min(sourceElements.length, renderedElements.length);
