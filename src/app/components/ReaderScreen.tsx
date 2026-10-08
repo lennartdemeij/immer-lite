@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import type { CanonicalBook } from '../../types/book';
 import type {
@@ -16,6 +16,9 @@ import { READER_CHROME } from '../hooks/useReaderViewport';
 import { useVisualViewportInset } from '../hooks/useVisualViewportInset';
 import { useReadAloud } from '../hooks/useReadAloud';
 import { ReadAloudPanel, SpeakerIcon } from './ReadAloudPanel';
+import { BookSearchPanel, SearchIcon } from './BookSearchPanel';
+import { createBookSearchIndex, createTextPortionIndex, findTextPortionIndex, searchBook } from '../../lib/reader/search';
+import type { BookSearchResult } from '../../lib/reader/search';
 import {
   captureRangeRectSnapshots,
   measureAnnotationRectSnapshots
@@ -296,6 +299,18 @@ export function ReaderScreen({
 }: ReaderScreenProps) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [readAloudOpen, setReadAloudOpen] = useState(false);
+  const [toolsOpen, setToolsOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchMatch, setSearchMatch] = useState<BookSearchResult | null>(null);
+  const [searchMatchRects, setSearchMatchRects] = useState<ReaderRectSnapshot[]>([]);
+  const toolsRef = useRef<HTMLDivElement>(null);
+  const toolsButtonRef = useRef<HTMLButtonElement>(null);
+  const searchPanelRef = useRef<HTMLElement>(null);
+  const deferredSearchQuery = useDeferredValue(searchQuery);
+  const searchIndex = useMemo(() => createBookSearchIndex(book), [book]);
+  const searchResults = useMemo(() => searchBook(searchIndex, deferredSearchQuery), [searchIndex, deferredSearchQuery]);
+  const textPortionIndex = useMemo(() => createTextPortionIndex(portions), [portions]);
   const readAloudPanelRef = useRef<HTMLElement>(null);
   const readAloudButtonRef = useRef<HTMLButtonElement>(null);
   const readAloud = useReadAloud({
@@ -635,6 +650,44 @@ export function ReaderScreen({
     document.addEventListener('pointerdown', close, true);
     return () => document.removeEventListener('pointerdown', close, true);
   }, [readAloudOpen]);
+
+  useEffect(() => {
+    if (!toolsOpen && !searchOpen && !settingsOpen && !readAloudOpen) return;
+    const close = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (!target || toolsRef.current?.contains(target) || searchPanelRef.current?.contains(target)
+        || settingsPanelRef.current?.contains(target) || readAloudPanelRef.current?.contains(target)) return;
+      setToolsOpen(false);
+      setSearchOpen(false);
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      setToolsOpen(false);
+      setSearchOpen(false);
+      setSettingsOpen(false);
+      setReadAloudOpen(false);
+      toolsButtonRef.current?.focus();
+    };
+    document.addEventListener('pointerdown', close, true);
+    document.addEventListener('keydown', escape);
+    return () => {
+      document.removeEventListener('pointerdown', close, true);
+      document.removeEventListener('keydown', escape);
+    };
+  }, [toolsOpen, searchOpen, settingsOpen, readAloudOpen]);
+
+  useEffect(() => {
+    setSearchQuery('');
+    setSearchMatch(null);
+    setSearchOpen(false);
+    setToolsOpen(false);
+  }, [book.id]);
+
+  useEffect(() => {
+    const scope = currentPaneRef.current;
+    const range = scope && searchMatch && createAnnotationRange(scope, searchMatch.blockId, searchMatch.startOffset, searchMatch.endOffset);
+    setSearchMatchRects(scope && range ? captureRangeRectSnapshots(range, scope) : []);
+  }, [searchMatch, portion, viewport, sheetHeights.current]);
 
   useEffect(() => {
     const scope = currentPaneRef.current;
@@ -1022,6 +1075,21 @@ export function ReaderScreen({
     }
     return labels;
   }, [progressDragging, progressTrackHeight, portionNavigation.items, activeNavigationItem?.sectionId, navigationStripOffset]);
+  const navigationNoteLabels = useMemo(() => {
+    const labels: { annotation: TextAnnotation; index: number; y: number; count: number }[] = [];
+    for (const annotation of annotations) {
+      const index = findTextPortionIndex(textPortionIndex, annotation.blockId, annotation.startOffset);
+      const item = portionNavigationItemByIndex.get(index);
+      if (!item) continue;
+      const y = item.topPx + item.heightPx / 2 + navigationStripOffset;
+      if (y < 12 || y > progressTrackHeight - 12) continue;
+      const nearby = labels.find((label) => Math.abs(label.y - y) < 26);
+      if (nearby) { nearby.count += 1; continue; }
+      if (navigationChapterLabels.some((chapter) => Math.abs(chapter.y - y) < 36)) continue;
+      labels.push({ annotation, index, y, count: 1 });
+    }
+    return labels;
+  }, [annotations, textPortionIndex, portionNavigationItemByIndex, navigationStripOffset, progressTrackHeight, navigationChapterLabels]);
   const continuationStyles = useMemo(() => {
     const stageWidth = stageRef.current?.clientWidth ?? viewport?.width ?? 0;
     if (stageHeight <= 0 || stageWidth <= 0 || !portion) {
@@ -1339,6 +1407,22 @@ export function ReaderScreen({
     clearDomSelection();
   }
 
+  function selectSearchResult(result: BookSearchResult) {
+    if (readAloud.isPlaying || paginationPending) return;
+    const index = findTextPortionIndex(textPortionIndex, result.blockId, result.startOffset);
+    if (index < 0) return;
+    clearDomSelection();
+    setSelectionDraft(null);
+    setSelectionEnabled(false);
+    clearSelectionFinalizeTimeout();
+    setActiveAnnotation(null);
+    setSearchMatch(result);
+    setSearchOpen(false);
+    searchPanelRef.current?.querySelector('input')?.blur();
+    onJumpToPortion(index);
+    toolsButtonRef.current?.focus({ preventScroll: true });
+  }
+
   function handlePointerDown(event: React.PointerEvent<HTMLElement>) {
     if (touchSelection && event.pointerType !== 'mouse') {
       setSelectionEnabled(false);
@@ -1606,25 +1690,45 @@ export function ReaderScreen({
           <p className="reader-section-label">{portion?.sectionLabel}</p>
         </div>
 
-        <div className="reader-actions">
-          <button ref={readAloudButtonRef} type="button" className={`settings-button read-aloud-button${readAloud.isPlaying ? ' playing' : ''}`}
-            aria-label="Open read aloud" aria-expanded={readAloudOpen} aria-controls="read-aloud-panel"
-            onClick={() => { setReadAloudOpen((value) => !value); setSettingsOpen(false); }}>
-            <SpeakerIcon />
+        <div className="reader-actions" ref={toolsRef}>
+          <button ref={toolsButtonRef} type="button"
+            className={`reader-tools-toggle${toolsOpen ? ' open' : ''}${readAloud.isPlaying ? ' playing' : ''}`}
+            aria-label="Reading tools" aria-expanded={toolsOpen} aria-controls="reader-tools"
+            onClick={() => {
+              setToolsOpen((value) => !value);
+              setSearchOpen(false); setSettingsOpen(false); setReadAloudOpen(false);
+            }}>
+            <svg viewBox="0 0 24 24" className="reader-tool-icon" aria-hidden="true" fill="currentColor">
+              <circle cx="5" cy="12" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="19" cy="12" r="1.5" />
+            </svg>
           </button>
-          <button
-            ref={settingsButtonRef}
-            type="button"
-            className="settings-button"
-            aria-label="Open settings"
-            onClick={() => setSettingsOpen((value) => !value)}
-          >
-            <SettingsIcon />
-          </button>
+          <nav id="reader-tools" className="reader-tools-menu" aria-label="Reading tools" hidden={!toolsOpen}>
+            <button type="button" aria-controls="book-search-panel" onClick={() => { setToolsOpen(false); setSearchOpen(true); }}>
+              <SearchIcon /><span>Search book</span>
+            </button>
+            <button ref={readAloudButtonRef} type="button" className={readAloud.isPlaying ? 'playing' : ''}
+              aria-controls="read-aloud-panel" onClick={() => { setToolsOpen(false); setReadAloudOpen(true); }}>
+              <SpeakerIcon /><span>Read aloud</span>{readAloud.isPlaying ? <span className="reader-playing-dot" aria-label="Playing" /> : null}
+            </button>
+            <button ref={settingsButtonRef} type="button" onClick={() => { setToolsOpen(false); setSettingsOpen(true); }}>
+              <SettingsIcon /><span>Reading settings</span>
+            </button>
+          </nav>
         </div>
       </header>
 
       <aside className="chapter-progress" aria-label="Reading progress by chapter">
+        <div className="chapter-progress-note-labels">
+          {navigationNoteLabels.map(({ annotation, index, y, count }) => (
+            <button key={annotation.id} type="button" className="chapter-progress-note-label"
+              style={{ top: `${y}px` }} disabled={readAloud.isPlaying || paginationPending}
+              aria-label={`Open note: ${annotation.note}${count > 1 ? ` (${count} nearby notes)` : ''}`}
+              title={annotation.note}
+              onClick={() => { onJumpToPortion(index); handleAnnotationPress(annotation); }}>
+              <BookmarkIcon /><span>{annotation.note}</span>{count > 1 ? <small>+{count - 1}</small> : null}
+            </button>
+          ))}
+        </div>
         {progressDragging ? (
           <div className="chapter-progress-labels" aria-hidden="true">
             {navigationChapterLabels.map((chapter) => (
@@ -1806,6 +1910,14 @@ export function ReaderScreen({
                   hideLeadingBoundarySceneBreak={hasSceneBreakBoundary(previousPortion, portion)}
                   hideTrailingBoundarySceneBreak={endsWithSceneBreak(portion)}
                 />
+                {searchMatchRects.length > 0 ? (
+                  <div className="annotation-live-overlay" aria-hidden="true">
+                    {searchMatchRects.map((rect, index) => (
+                      <div key={`search-match-${index}`} className="search-match-highlight"
+                        style={{ left: `${rect.x}%`, top: `${rect.y}%`, width: `${rect.width}%`, height: `${rect.height}%` }} />
+                    ))}
+                  </div>
+                ) : null}
                 {spokenSentenceRects.length > 0 || spokenWordRects.length > 0 ? (
                   <div className="annotation-live-overlay speech-word-overlay" aria-hidden="true">
                     {spokenSentenceRects.map((rect, index) => (
@@ -1954,17 +2066,21 @@ export function ReaderScreen({
         </div>
       ) : null}
 
+      <BookSearchPanel open={searchOpen} query={searchQuery} results={searchResults}
+        pending={searchQuery !== deferredSearchQuery || paginationPending} navigationLocked={readAloud.isPlaying}
+        panelRef={searchPanelRef} onQueryChange={setSearchQuery} onSelect={selectSearchResult} />
+
       <ReadAloudPanel open={readAloudOpen} isPlaying={readAloud.isPlaying} supported={readAloud.supported}
         rate={requestedSettings.speechRate ?? 1} error={readAloud.error} panelRef={readAloudPanelRef}
         onToggle={readAloud.toggle} onRateChange={(speechRate) => onSettingsChange({ ...requestedSettings, speechRate })} />
 
-      <SettingsPanel
+      {settingsOpen ? <SettingsPanel
         panelRef={settingsPanelRef}
         open={settingsOpen}
         settings={requestedSettings}
         onChange={onSettingsChange}
         onFileSelected={onFileSelected}
-      />
+      /> : null}
     </div>
   );
 }

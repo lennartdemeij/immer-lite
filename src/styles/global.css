@@ -99,6 +99,7 @@ button {
 }
 
 .theme-light {
+  --reader-panel-bg: #ffffff;
   --app-base-bg: #ffffff;
   --surface: rgba(255, 255, 255, 0.86);
   --surface-strong: rgba(255, 255, 255, 0.96);
@@ -125,6 +126,7 @@ button {
 }
 
 .theme-sepia {
+  --reader-panel-bg: #fbf2e2;
   --app-base-bg: #ebdcc0;
   --surface: rgba(245, 234, 212, 0.82);
   --surface-strong: rgba(251, 242, 226, 0.94);
@@ -154,6 +156,7 @@ button {
 }
 
 .theme-dark {
+  --reader-panel-bg: #171a1f;
   color-scheme: dark;
   --app-base-bg: #0e1217;
   --surface: rgba(20, 23, 27, 0.82);
@@ -467,14 +470,14 @@ button {
 
 .reader-header {
   position: relative;
-  z-index: 10;
+  z-index: 20;
   min-height: 76px;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 20px;
   color: var(--text);
-  opacity: 0.5;
+  opacity: 1;
   padding:
     0
     calc(22px + var(--safe-right))
@@ -522,8 +525,100 @@ button {
 }
 
 .reader-actions {
+  position: relative;
   display: flex;
   align-items: flex-start;
+}
+
+.reader-actions .reader-tools-toggle {
+  width: 44px;
+  height: 44px;
+  padding: 10px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border-color: transparent;
+  opacity: 0.5;
+  transition: opacity 160ms ease, background 160ms ease;
+}
+
+.reader-actions .reader-tools-toggle:hover,
+.reader-actions .reader-tools-toggle.open,
+.reader-actions .reader-tools-toggle.playing {
+  opacity: 1;
+  background: var(--surface);
+  border-color: var(--stroke);
+}
+
+.reader-tools-menu {
+  position: absolute;
+  top: 52px;
+  right: 0;
+  width: 204px;
+  padding: 6px;
+  border: 1px solid var(--stroke);
+  border-radius: 18px;
+  background: var(--reader-panel-bg);
+  box-shadow: var(--shadow);
+  font: 500 0.85rem/1.3 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+.reader-tools-menu[hidden] { display: none; }
+
+.reader-tools-menu button {
+  width: 100%;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  padding: 10px;
+  text-align: left;
+  backdrop-filter: none;
+}
+
+.reader-tools-menu button:hover,
+.reader-tools-menu button:focus-visible {
+  background: var(--stroke);
+}
+
+.reader-tool-icon,
+.reader-tools-menu .settings-icon,
+.reader-tools-menu .read-aloud-icon {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  display: block;
+  opacity: 1;
+}
+
+.reader-playing-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  margin-left: auto;
+}
+
+.reader-tools-toggle:focus-visible,
+.chapter-progress-note-label:focus-visible,
+.book-search-field:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.search-match-highlight {
+  position: absolute;
+  background: var(--navigator-current);
+  opacity: 0.4;
+  border-radius: 3px;
+}
+
+.theme-dark .search-match-highlight {
+  background: #f6bb76;
+  mix-blend-mode: screen;
 }
 
 .read-aloud-icon {
@@ -699,6 +794,50 @@ button {
   font-weight: 650;
 }
 
+.chapter-progress-note-labels {
+  position: absolute;
+  inset: 0 12px 0 auto;
+  width: 116px;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 4;
+}
+
+.chapter-progress:has(.dragging) .chapter-progress-note-labels { right: 44px; }
+
+.chapter-progress-note-label {
+  position: absolute;
+  right: 0;
+  max-width: 100%;
+  min-height: 24px;
+  padding: 3px 6px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--stroke);
+  border-radius: 6px;
+  background: var(--surface-strong);
+  color: var(--text);
+  font: 500 0.65rem/1.3 system-ui, -apple-system, "Segoe UI", sans-serif;
+  transform: translateY(-50%);
+  pointer-events: auto;
+}
+
+.chapter-progress-note-label span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.chapter-progress-note-label .annotation-save-icon {
+  width: 11px;
+  height: 11px;
+  flex: 0 0 auto;
+  color: var(--navigator-annotation);
+}
+
+.chapter-progress-note-label small { font: inherit; white-space: nowrap; }
+
 .chapter-progress-strip {
   position: absolute;
   top: 0;
@@ -718,7 +857,10 @@ button {
   border-radius: 2px;
   pointer-events: none;
   -webkit-user-drag: none;
+  opacity: 0;
 }
+
+.chapter-progress-track.dragging .chapter-progress-cover { opacity: 1; }
 
 .chapter-progress-track.dragging {
   width: 40px;
@@ -1318,6 +1460,76 @@ button {
   box-shadow: var(--shadow);
   display: grid;
   gap: 14px;
+}
+
+.book-search-panel {
+  width: min(380px, calc(100vw - 36px - var(--safe-left) - var(--safe-right)));
+  font: 400 0.88rem/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+.book-search-panel .settings-panel-inner {
+  background: var(--reader-panel-bg);
+  max-height: calc(100dvh - var(--safe-top) - var(--visual-viewport-inset, 0px) - 100px);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 20px;
+}
+
+.book-search-field {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--stroke);
+  border-radius: 12px;
+  padding: 10px;
+  color: var(--muted);
+}
+
+.book-search-field input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 16px;
+}
+
+.book-search-results {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.book-search-result {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  padding: 11px 8px;
+  border: 0;
+  border-bottom: 1px solid var(--stroke);
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  font: inherit;
+}
+
+.book-search-result:last-child { border-bottom: 0; }
+.book-search-result:hover,
+.book-search-result:focus-visible,
+.book-search-result[aria-selected="true"] { background: var(--stroke); border-radius: 10px; }
+.book-search-result:disabled { opacity: 0.55; cursor: default; }
+.book-search-chapter { color: var(--muted); font-size: 0.72rem; }
+.book-search-excerpt { overflow-wrap: anywhere; }
+.book-search-excerpt mark { background: transparent; color: var(--accent); font-weight: 650; }
+.book-search-status { flex-shrink: 0; margin: 0; padding: 0 8px 2px; font-size: 0.74rem; color: var(--muted); }
+
+@media (prefers-reduced-motion: reduce) {
+  .reader-tools-toggle, .settings-panel { transition: none; }
 }
 
 .settings-group {
