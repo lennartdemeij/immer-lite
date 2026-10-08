@@ -357,7 +357,7 @@ export function ReaderScreen({
     next: 0
   });
   const pointerState = useRef<PointerState | null>(null);
-  const wheelGesture = useRef({ distance: 0, lastAt: 0, locked: false });
+  const wheelGesture = useRef({ distance: 0, lastAt: 0, blockedUntil: 0 });
   const longPressTimeoutRef = useRef<number | null>(null);
   const longPressEligibleRef = useRef(false);
   const longPressTriggeredRef = useRef(false);
@@ -598,25 +598,21 @@ export function ReaderScreen({
       event.preventDefault();
       const gesture = wheelGesture.current;
       const now = performance.now();
-      // Trackpad momentum belongs to the same gesture until scrolling becomes quiet.
-      if (now - gesture.lastAt > 180) {
-        gesture.distance = 0;
-        gesture.locked = false;
-      }
+      if (now - gesture.lastAt > 180) gesture.distance = 0;
       gesture.lastAt = now;
       if (readAloud.isPlaying || isDragging || snapDirection || selectionEnabled || selectionDraft || activeAnnotation) {
         gesture.distance = 0;
-        gesture.locked = true;
         return;
       }
-      if (gesture.locked) return;
+      if (now < gesture.blockedUntil) return;
       const delta = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? stage.clientHeight : 1);
       if (Math.sign(delta) !== Math.sign(gesture.distance)) gesture.distance = 0;
       gesture.distance += delta;
       if (Math.abs(gesture.distance) < 40) return;
       const direction = gesture.distance > 0 ? 'forward' : 'backward';
       gesture.distance = 0;
-      gesture.locked = true;
+      // Bound the cooldown: ongoing wheel events must not keep navigation locked.
+      gesture.blockedUntil = now + 400;
       if (direction === 'forward' ? nextPortion : previousPortion) {
         triggerReaderHaptic();
         animateToNeighbor(direction);
