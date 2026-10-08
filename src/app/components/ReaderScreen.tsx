@@ -1696,7 +1696,8 @@ export function ReaderScreen({
       style={{ '--visual-viewport-inset': `${visualViewportInset}px` } as CSSProperties}
     >
       {requestedSettings.backgroundAnimation ? (
-        <ReaderBackground key={book.fingerprint} portionIndex={portionIndex} paginationPending={paginationPending} />
+        <ReaderBackground key={book.fingerprint} portionIndex={portionIndex} paginationPending={paginationPending}
+          dragOffset={dragOffset} isDragging={isDragging} snapDirection={snapDirection} transitionEnabled={transitionEnabled} />
       ) : null}
       <input ref={bookInputRef} className="sr-only" type="file"
         accept=".epub,.pdf,application/epub+zip,application/pdf"

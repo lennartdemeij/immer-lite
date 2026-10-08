@@ -1,44 +1,73 @@
-import { useEffect, useRef } from 'react';
+import { useLayoutEffect, useRef } from 'react';
 
-export function ReaderBackground({ portionIndex, paginationPending }: {
+const DEPTHS = [0.025, 0.065, 0.14];
+const TRAIL = [8, 22, 48];
+const tileOffset = (offset: number) => ((offset % 240) + 240) % 240 - 240;
+const dragDistance = (offset: number) => Math.max(-2000, Math.min(2000, offset));
+
+export function ReaderBackground({ portionIndex, paginationPending, dragOffset, isDragging, snapDirection, transitionEnabled }: {
   portionIndex: number;
   paginationPending: boolean;
+  dragOffset: number;
+  isDragging: boolean;
+  snapDirection: 'forward' | 'backward' | null;
+  transitionEnabled: boolean;
 }) {
   const root = useRef<HTMLDivElement>(null);
-  const animations = useRef<Animation[]>([]);
-  const previousPortion = useRef(portionIndex);
+  const animations = useRef<(Animation | null)[]>([]);
+  const bases = useRef([0, 0, 0]);
+  const previous = useRef({ portionIndex, dragOffset, isDragging, snapDirection });
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const stop = () => animations.current.forEach((animation) => animation.pause());
-    animations.current = Array.from(root.current?.children ?? [], (layer, index) => {
-      // The repeated tile makes each loop seamless. No animation runs while reading.
-      const animation = layer.animate([
-        { transform: 'translateY(0)' },
-        { transform: 'translateY(-240px)' }
-      ], { duration: [30000, 18000, 12000][index], iterations: Infinity });
-      animation.pause();
-      return animation;
-    });
+    const stop = () => animations.current.forEach((animation) => animation?.cancel());
     reducedMotion.addEventListener('change', stop);
     return () => {
       reducedMotion.removeEventListener('change', stop);
-      animations.current.forEach((animation) => animation.cancel());
-      animations.current = [];
+      stop();
     };
   }, []);
 
-  useEffect(() => {
-    const advancing = portionIndex > previousPortion.current;
-    previousPortion.current = portionIndex;
-    if (!advancing || paginationPending || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    animations.current.forEach((animation) => animation.play());
-    const timer = window.setTimeout(() => animations.current.forEach((animation) => animation.pause()), 2400);
-    return () => {
-      window.clearTimeout(timer);
-      animations.current.forEach((animation) => animation.pause());
-    };
-  }, [portionIndex, paginationPending]);
+  useLayoutEffect(() => {
+    const last = previous.current;
+    previous.current = { portionIndex, dragOffset, isDragging, snapDirection };
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+    const settled = last.snapDirection !== null && snapDirection === null;
+    const changed = portionIndex !== last.portionIndex && !paginationPending;
+    const starting = (isDragging || snapDirection !== null) && !last.isDragging && last.snapDirection === null;
+    const direction = settled
+      ? last.snapDirection === 'forward' ? -1 : 1
+      : changed ? Math.sign(last.portionIndex - portionIndex) : 0;
+
+    Array.from(root.current?.children ?? []).forEach((child, index) => {
+      const layer = child as HTMLElement;
+      const measured = new DOMMatrixReadOnly(getComputedStyle(layer).transform).m42;
+      const current = tileOffset(measured);
+      bases.current[index] -= measured - current;
+      if (starting || (changed && !settled)) bases.current[index] = tileOffset(current);
+      if (settled) bases.current[index] += dragDistance(last.dragOffset) * DEPTHS[index];
+
+      const targetDrag = dragDistance(dragOffset) * DEPTHS[index];
+      let target = bases.current[index] + targetDrag;
+      let duration = transitionEnabled ? 240 : 0;
+      if (settled || changed) {
+        target = bases.current[index] + direction * TRAIL[index];
+        bases.current[index] = target;
+        duration = 900;
+      } else if (!starting && !isDragging && !transitionEnabled) {
+        return; // Keep the short tail running after the text has settled.
+      }
+
+      animations.current[index]?.cancel();
+      // Rebase by whole tiles so both directions stay covered indefinitely.
+      layer.style.transform = `translateY(${target}px)`;
+      animations.current[index] = duration ? layer.animate([
+        { transform: `translateY(${current}px)` },
+        { transform: `translateY(${target}px)` }
+      ], { duration, easing: 'ease-out' }) : null;
+    });
+  }, [portionIndex, paginationPending, dragOffset, isDragging, snapDirection, transitionEnabled]);
 
   return <div ref={root} className="reader-dust" aria-hidden="true">
     <div className="reader-dust-layer reader-dust-far" />

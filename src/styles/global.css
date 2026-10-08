@@ -100,31 +100,34 @@ button {
 
 .reader-dust-layer {
   position: absolute;
-  inset: 0 0 -240px;
+  inset: -720px 0;
   background-size: 320px 240px;
   background-repeat: repeat;
 }
 
 .reader-dust-far {
-  opacity: 0.08;
+  opacity: 0.13;
+  background-size: 260px 240px;
   background-image:
     radial-gradient(circle at 32px 38px, currentColor 0.7px, transparent 1.2px),
     radial-gradient(circle at 204px 166px, currentColor 0.6px, transparent 1px),
-    radial-gradient(circle at 284px 84px, currentColor 0.5px, transparent 1px);
+    radial-gradient(circle at 124px 84px, currentColor 0.5px, transparent 1px);
 }
 
 .reader-dust-middle {
-  opacity: 0.11;
+  opacity: 0.18;
+  background-size: 370px 240px;
   background-image:
-    radial-gradient(circle at 94px 116px, currentColor 1px, transparent 1.8px),
-    radial-gradient(circle at 252px 212px, currentColor 0.8px, transparent 1.5px);
+    radial-gradient(circle at 94px 116px, currentColor 1.2px, transparent 2.2px),
+    radial-gradient(circle at 252px 212px, currentColor 1px, transparent 1.9px);
 }
 
 .reader-dust-near {
-  opacity: 0.14;
+  opacity: 0.22;
+  background-size: 460px 240px;
   background-image:
-    radial-gradient(circle at 170px 52px, currentColor 1px, transparent 2.8px),
-    radial-gradient(circle at 46px 206px, currentColor 1.2px, transparent 3px);
+    radial-gradient(circle at 170px 52px, currentColor 1.8px, transparent 4px),
+    radial-gradient(circle at 46px 206px, currentColor 2px, transparent 4.5px);
 }
 
 @media (prefers-reduced-motion: reduce) {
