@@ -81,6 +81,7 @@ button {
   min-height: 100dvh;
   position: relative;
   overflow: hidden;
+  overflow: clip;
   background-color: var(--app-base-bg);
   padding:
     calc(var(--safe-top) + 18px)
