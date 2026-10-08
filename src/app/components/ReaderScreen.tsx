@@ -1706,7 +1706,15 @@ export function ReaderScreen({
           event.target.value = '';
           if (file) { setToolsOpen(false); onFileSelected(file); }
         }} />
-      <header className="reader-header">
+      <header className={`reader-header${readAloud.isPlaying ? ' reading-aloud' : ''}`}>
+        {readAloud.isPlaying ? (
+          <button type="button" className="read-aloud-toggle reader-pause-button"
+            aria-label="Pause reading" onClick={readAloud.toggle}>
+            <svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
+              <path d="M6 4h4v16H6zm8 0h4v16h-4z" />
+            </svg>
+          </button>
+        ) : null}
         <div className="reader-header-copy">
           <p className="reader-kicker">{book.metadata.creator ?? 'Local publication'}</p>
           <h1>{book.metadata.title}</h1>

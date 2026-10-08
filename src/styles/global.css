@@ -109,25 +109,28 @@ button {
   opacity: 0.13;
   background-size: 260px 240px;
   background-image:
-    radial-gradient(circle at 32px 38px, currentColor 0.7px, transparent 1.2px),
-    radial-gradient(circle at 204px 166px, currentColor 0.6px, transparent 1px),
-    radial-gradient(circle at 124px 84px, currentColor 0.5px, transparent 1px);
+    radial-gradient(circle at 32px 38px, currentColor 0.45px, transparent 0.8px),
+    radial-gradient(circle at 204px 166px, currentColor 0.4px, transparent 0.7px),
+    radial-gradient(circle at 124px 84px, currentColor 0.35px, transparent 0.65px),
+    radial-gradient(circle at 78px 208px, currentColor 0.4px, transparent 0.7px);
 }
 
 .reader-dust-middle {
   opacity: 0.18;
   background-size: 370px 240px;
   background-image:
-    radial-gradient(circle at 94px 116px, currentColor 1.2px, transparent 2.2px),
-    radial-gradient(circle at 252px 212px, currentColor 1px, transparent 1.9px);
+    radial-gradient(circle at 94px 116px, currentColor 0.75px, transparent 1.4px),
+    radial-gradient(circle at 252px 212px, currentColor 0.65px, transparent 1.1px),
+    radial-gradient(circle at 326px 54px, currentColor 0.7px, transparent 1.3px);
 }
 
 .reader-dust-near {
   opacity: 0.22;
   background-size: 460px 240px;
   background-image:
-    radial-gradient(circle at 170px 52px, currentColor 1.8px, transparent 4px),
-    radial-gradient(circle at 46px 206px, currentColor 2px, transparent 4.5px);
+    radial-gradient(circle at 170px 52px, currentColor 1.1px, transparent 2.4px),
+    radial-gradient(circle at 46px 206px, currentColor 1.2px, transparent 2.7px),
+    radial-gradient(circle at 362px 142px, currentColor 1px, transparent 2.3px);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -542,6 +545,16 @@ button {
   pointer-events: none;
 }
 
+.reader-pause-button {
+  position: absolute;
+  top: 0;
+  left: calc(22px + var(--safe-left));
+}
+
+.reader-header.reading-aloud .reader-tools-menu {
+  left: calc(78px + var(--safe-left));
+}
+
 .reader-kicker,
 .reader-section-label,
 .reader-footer,
@@ -679,6 +692,7 @@ button {
 }
 
 .reader-tools-toggle:focus-visible,
+.reader-pause-button:focus-visible,
 .chapter-progress-label:focus-visible,
 .chapter-progress-note-label:focus-visible,
 .book-search-field:focus-within {
@@ -1799,6 +1813,8 @@ button {
   }
 
   .reader-tools-menu { left: calc(16px + var(--safe-left)); }
+  .reader-pause-button { left: calc(16px + var(--safe-left)); }
+  .reader-header.reading-aloud .reader-tools-menu { left: calc(72px + var(--safe-left)); }
 
   .reader-header,
   .reader-footer {
