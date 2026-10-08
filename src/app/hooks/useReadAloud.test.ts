@@ -6,6 +6,13 @@ import type { ReaderPortion } from '../../types/reader';
 import { estimateWordDurations, getSpeechChunks } from '../../lib/reader/speechContent';
 import { useReadAloud } from './useReadAloud';
 
+const ai = vi.hoisted(() => ({
+  unlock: vi.fn(), generate: vi.fn(), play: vi.fn(), cancel: vi.fn(), dispose: vi.fn()
+}));
+vi.mock('../../lib/reader/kokoroSpeech', () => ({
+  KokoroSpeech: vi.fn(function () { return ai; })
+}));
+
 const text = 'Hello wonderful world. Next sentence.';
 const block: TextBlock = {
   id: 'paragraph', sectionId: 'chapter', order: 0, kind: 'paragraph', text,
@@ -62,6 +69,15 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   spoken = [];
+  vi.clearAllMocks();
+  ai.unlock.mockResolvedValue(undefined);
+  ai.generate.mockResolvedValue({ samples: new Float32Array(24000), sampleRate: 24000 });
+  ai.play.mockImplementation(() => {
+    const startedAt = performance.now();
+    return { duration: 3, elapsed: () => (performance.now() - startedAt) / 1000 };
+  });
+  vi.stubGlobal('Worker', function () {});
+  vi.stubGlobal('AudioContext', function () {});
   cancel = vi.fn(() => current()?.onerror?.());
   vi.stubGlobal('SpeechSynthesisUtterance', FakeUtterance);
   vi.stubGlobal('speechSynthesis', { speak: (utterance: FakeUtterance) => spoken.push(utterance), cancel, getVoices: () => [] });
@@ -80,6 +96,92 @@ afterEach(() => {
 });
 
 describe('read aloud', () => {
+  it('fits AI word highlights to the real sentence audio and prepares the next sentence', async () => {
+    render({ engine: 'ai', portion: page(0, text.length) });
+    await act(async () => result.toggle());
+    expect(spoken).toHaveLength(0);
+    expect(ai.generate).toHaveBeenCalledWith('Hello wonderful world.', 'af_heart', 1);
+    expect(ai.generate).toHaveBeenCalledWith('Next sentence.', 'af_heart', 1);
+    expect(result.spokenSentence).toEqual({ blockId: block.id, startOffset: 0, endOffset: 22 });
+    const weights = estimateWordDurations(getSpeechChunks(book, page(0, 22))[0], 0, 1);
+    const firstDuration = 3000 * weights[0] / weights.reduce((sum, weight) => sum + weight, 0);
+    act(() => vi.advanceTimersByTime(firstDuration - 1));
+    expect(result.spokenWord?.startOffset).toBe(0);
+    act(() => vi.advanceTimersByTime(2));
+    expect(result.spokenWord?.startOffset).toBe(6);
+    await act(async () => ai.play.mock.calls[0][2]());
+    expect(result.spokenWord?.startOffset).toBe(23);
+    await act(async () => ai.play.mock.calls[1][2]());
+    expect(result.isPlaying).toBe(false);
+  });
+
+  it('does not start delayed AI audio after pausing during loading', async () => {
+    let resolve!: (value: object) => void;
+    ai.generate.mockReturnValue(new Promise((done) => { resolve = done; }));
+    render({ engine: 'ai' });
+    await act(async () => result.toggle());
+    expect(result.status).toContain('Preparing');
+    act(() => result.toggle());
+    await act(async () => resolve({ samples: new Float32Array(24000), sampleRate: 24000 }));
+    expect(ai.play).not.toHaveBeenCalled();
+    expect(result.isPlaying).toBe(false);
+    expect(result.status).toBeNull();
+  });
+
+  it('continues AI reading on the next page and ignores canceled audio callbacks', async () => {
+    render({ engine: 'ai', canGoNext: true });
+    await act(async () => result.toggle());
+    await act(async () => ai.play.mock.calls[0][2]());
+    expect(options.onNext).toHaveBeenCalledOnce();
+    await act(async () => render({ portion: page(23, text.length), canGoNext: false }));
+    expect(ai.generate).toHaveBeenLastCalledWith('Next sentence.', 'af_heart', 1);
+    act(() => result.toggle());
+    await act(async () => ai.play.mock.calls[1][2]());
+    expect(options.onNext).toHaveBeenCalledOnce();
+    expect(result.isPlaying).toBe(false);
+  });
+
+  it('can switch from AI to the device voice at its current word', async () => {
+    render({ engine: 'ai' });
+    await act(async () => result.toggle());
+    act(() => vi.advanceTimersByTime(1000));
+    render({ engine: 'built-in' });
+    expect(ai.cancel).toHaveBeenCalled();
+    expect(current().text).toBe('wonderful world.');
+    await act(async () => ai.play.mock.calls[0][2]());
+    expect(spoken).toHaveLength(1);
+    expect(result.isPlaying).toBe(true);
+  });
+
+  it('generates AI speech at the selected speed without altering playback pitch', async () => {
+    render({ engine: 'ai', rate: 2 });
+    await act(async () => result.toggle());
+    expect(ai.generate).toHaveBeenCalledWith('Hello wonderful world.', 'af_heart', 2);
+    expect(ai.play.mock.calls[0][1]).toBe(1);
+  });
+
+  it('keeps built-in available for languages Kokoro does not support', () => {
+    render({ engine: 'ai', book: { ...book, metadata: { ...book.metadata, language: 'nl' } } });
+    expect(result.supported).toBe(false);
+    expect(result.aiLanguageSupported).toBe(false);
+    act(() => result.toggle());
+    expect(ai.generate).not.toHaveBeenCalled();
+    render({ engine: 'built-in' });
+    expect(result.supported).toBe(true);
+  });
+
+  it('stops on an AI initialization error and permits another Play attempt', async () => {
+    ai.generate.mockRejectedValueOnce(new Error('AI voice could not initialize.'));
+    render({ engine: 'ai' });
+    await act(async () => result.toggle());
+    expect(result.isPlaying).toBe(false);
+    expect(result.error).toContain('could not initialize');
+    expect(ai.dispose).toHaveBeenCalledOnce();
+    await act(async () => result.toggle());
+    expect(result.error).toBeNull();
+    expect(ai.play).toHaveBeenCalledOnce();
+  });
+
   it('falls back when Android refuses an advertised voice before speech starts', () => {
     const voice = { name: 'English US', voiceURI: 'english-us', lang: 'en_US', localService: true, default: true };
     vi.stubGlobal('speechSynthesis', { getVoices: () => [voice], cancel, speak: (utterance: FakeUtterance) => spoken.push(utterance) });

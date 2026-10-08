@@ -316,7 +316,7 @@ export function ReaderScreen({
   const readAloudPanelRef = useRef<HTMLElement>(null);
   const readAloudButtonRef = useRef<HTMLButtonElement>(null);
   const readAloud = useReadAloud({
-    book, portion, rate: requestedSettings.speechRate ?? 1,
+    book, portion, rate: requestedSettings.speechRate ?? 1, engine: requestedSettings.speechEngine ?? 'built-in',
     canGoNext: Boolean(nextPortion), paginationPending, onNext
   });
   const [spokenWordRects, setSpokenWordRects] = useState<ReaderRectSnapshot[]>([]);
@@ -2102,6 +2102,8 @@ export function ReaderScreen({
 
       <ReadAloudPanel open={readAloudOpen} isPlaying={readAloud.isPlaying} supported={readAloud.supported}
         rate={requestedSettings.speechRate ?? 1} error={readAloud.error} panelRef={readAloudPanelRef}
+        engine={requestedSettings.speechEngine ?? 'built-in'} status={readAloud.status} aiLanguageSupported={readAloud.aiLanguageSupported}
+        onEngineChange={(speechEngine) => onSettingsChange({ ...requestedSettings, speechEngine })}
         onToggle={readAloud.toggle} onRateChange={(speechRate) => onSettingsChange({ ...requestedSettings, speechRate })} />
 
       {settingsOpen ? <SettingsPanel

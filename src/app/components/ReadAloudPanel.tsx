@@ -15,13 +15,17 @@ interface ReadAloudPanelProps {
   isPlaying: boolean;
   supported: boolean;
   rate: number;
+  engine: 'built-in' | 'ai';
+  aiLanguageSupported: boolean;
+  status: string | null;
   error: string | null;
   panelRef: RefObject<HTMLElement>;
   onToggle: () => void;
   onRateChange: (rate: number) => void;
+  onEngineChange: (engine: 'built-in' | 'ai') => void;
 }
 
-export function ReadAloudPanel({ open, isPlaying, supported, rate, error, panelRef, onToggle, onRateChange }: ReadAloudPanelProps) {
+export function ReadAloudPanel({ open, isPlaying, supported, rate, engine, aiLanguageSupported, status, error, panelRef, onToggle, onRateChange, onEngineChange }: ReadAloudPanelProps) {
   return (
     <aside ref={panelRef} id="read-aloud-panel" className={`settings-panel read-aloud-panel ${open ? 'open' : ''}`}
       aria-label="Read aloud controls" hidden={!open}>
@@ -35,12 +39,26 @@ export function ReadAloudPanel({ open, isPlaying, supported, rate, error, panelR
             </svg>
           </button>
         </div>
+        <div className="settings-group">
+          <span>Voice</span>
+          <div className="theme-row" role="group" aria-label="Voice engine">
+            <button type="button" className={engine === 'built-in' ? 'active' : ''}
+              aria-pressed={engine === 'built-in'} onClick={() => onEngineChange('built-in')}>Built-in</button>
+            <button type="button" className={engine === 'ai' ? 'active' : ''}
+              aria-pressed={engine === 'ai'} onClick={() => onEngineChange('ai')}>AI voice</button>
+          </div>
+          {engine === 'ai' ? <p className="read-aloud-error">
+            {aiLanguageSupported ? 'Kokoro · English · runs on your device. First use downloads about 100 MB.'
+              : 'Kokoro currently supports English books. Choose Built-in for this book.'}
+          </p> : null}
+        </div>
         <label className="settings-group">
           <span className="read-aloud-speed-label">Speed <output>{rate.toFixed(2).replace(/0$/, '')}×</output></span>
           <input type="range" min="0.5" max="2" step="0.25" value={rate}
             aria-label="Reading speed" onChange={(event) => onRateChange(Number(event.target.value))} />
         </label>
-        {!supported ? <p role="status" className="read-aloud-error">Reading aloud is not supported in this browser.</p> : null}
+        {!supported && (engine !== 'ai' || aiLanguageSupported) ? <p role="status" className="read-aloud-error">Reading aloud is not supported in this browser.</p> : null}
+        {status ? <p role="status" className="read-aloud-error">{status}</p> : null}
         {error ? <p role="alert" className="read-aloud-error">{error}</p> : null}
       </div>
     </aside>

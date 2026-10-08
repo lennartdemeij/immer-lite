@@ -6,6 +6,7 @@ export interface ReaderSettings {
   horizontalPadding: number;
   theme: ThemeMode;
   speechRate?: number;
+  speechEngine?: 'built-in' | 'ai';
   hyphenation?: boolean;
   hyphenationLanguage?: string;
   backgroundAnimation?: boolean;

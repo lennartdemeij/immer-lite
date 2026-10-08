@@ -2,18 +2,25 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CanonicalBook } from '../../types/book';
 import type { ReaderPortion } from '../../types/reader';
 import { estimateWordDurations, getSpeechChunks, type SpeechChunk, type SpokenWord } from '../../lib/reader/speechContent';
+import { KokoroSpeech } from '../../lib/reader/kokoroSpeech';
 
 interface ReadAloudOptions {
   book: CanonicalBook;
   portion: ReaderPortion | null;
   rate: number;
+  engine?: 'built-in' | 'ai';
   canGoNext: boolean;
   paginationPending: boolean;
   onNext: () => void;
 }
 
 export function useReadAloud(options: ReadAloudOptions) {
-  const supported = typeof window !== 'undefined' && 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window;
+  const builtInSupported = typeof window !== 'undefined' && 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window;
+  const engine = options.engine ?? 'built-in';
+  const aiLanguageSupported = !options.book.metadata.language || /^en(?:[-_]|$)/i.test(options.book.metadata.language);
+  const supported = engine === 'ai'
+    ? typeof window !== 'undefined' && 'Worker' in window && 'AudioContext' in window && aiLanguageSupported
+    : builtInSupported;
   const chunks = useMemo(() => getSpeechChunks(options.book, options.portion), [options.book, options.portion]);
   const key = JSON.stringify(chunks);
   const latest = useRef({ ...options, chunks, key });
@@ -29,12 +36,14 @@ export function useReadAloud(options: ReadAloudOptions) {
     return { blockId: first.blockId, startOffset, endOffset: startOffset + spokenChunk.text.length };
   }, [spokenChunk]);
   const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
+  const aiSpeech = useRef<KokoroSpeech | null>(null);
   const wordTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const playback = useRef({
     active: false, generation: 0, chunk: 0, word: 0,
     waiting: null as 'layout' | 'page' | null,
     chunks: chunks as SpeechChunk[], key, fingerprint: options.book.fingerprint, portionId: options.portion?.id,
-    rate: options.rate, cursor: null as SpokenWord | null,
+    rate: options.rate, engine, cursor: null as SpokenWord | null,
     utterance: null as SpeechSynthesisUtterance | null,
     timingScale: 1,
     voiceFallback: 0
@@ -49,7 +58,9 @@ export function useReadAloud(options: ReadAloudOptions) {
     clearWordTimer();
     playback.current.generation += 1;
     playback.current.utterance = null;
-    if (supported) window.speechSynthesis.cancel();
+    aiSpeech.current?.cancel();
+    setStatus(null);
+    if (builtInSupported) window.speechSynthesis.cancel();
   }
 
   function finish() {
@@ -60,6 +71,7 @@ export function useReadAloud(options: ReadAloudOptions) {
     state.cursor = null;
     setIsPlaying(false);
     setSpokenWord(null);
+    setStatus(null);
   }
 
   function finishPage() {
@@ -76,6 +88,63 @@ export function useReadAloud(options: ReadAloudOptions) {
     }
   }
 
+  async function speakAI(chunk: SpeechChunk) {
+    const state = playback.current;
+    const generation = ++state.generation;
+    const current = () => state.active && generation === state.generation;
+    const firstWord = state.word;
+    const from = firstWord === 0 ? 0 : chunk.words[firstWord].charStart;
+    const voice = /en[-_]gb/i.test(latest.current.book.metadata.language ?? '') ? 'bf_emma' : 'af_heart';
+    const speed = Math.min(2, Math.max(0.5, state.rate));
+    try {
+      if (!aiSpeech.current) aiSpeech.current = new KokoroSpeech((message) => {
+        if (playback.current.active && playback.current.engine === 'ai') setStatus(message);
+      });
+      const speech = aiSpeech.current;
+      setStatus('Preparing AI voice…');
+      await speech.unlock();
+      const audio = await speech.generate(chunk.text.slice(from), voice, speed);
+      if (!current()) return;
+      const highlight = (index: number) => {
+        state.word = index;
+        state.cursor = chunk.words[index];
+        setSpokenWord(state.cursor);
+      };
+      const clock = speech.play(audio, 1, () => {
+        if (!current()) return;
+        clearWordTimer();
+        state.chunk += 1;
+        state.word = 0;
+        speak();
+      });
+      setStatus(null);
+      highlight(firstWord);
+      // Fit the word-length estimates to this sentence's actual audio duration.
+      const weights = estimateWordDurations(chunk, firstWord, 1);
+      const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
+      let elapsed = 0;
+      const schedule = (index: number) => {
+        if (index + 1 >= weights.length) return;
+        elapsed += weights[index] / totalWeight * clock.duration;
+        wordTimer.current = setTimeout(() => {
+          wordTimer.current = null;
+          if (!current()) return;
+          highlight(firstWord + index + 1);
+          schedule(index + 1);
+        }, Math.max(0, (elapsed - clock.elapsed()) * 1000));
+      };
+      schedule(0);
+      const next = state.chunks[state.chunk + 1];
+      if (next) void speech.generate(next.text, voice, speed).catch(() => {});
+    } catch (cause) {
+      if (!current()) return;
+      aiSpeech.current?.dispose();
+      aiSpeech.current = null;
+      finish();
+      setError(cause instanceof Error ? cause.message : 'AI voice could not start. Try again or choose Built-in.');
+    }
+  }
+
   function speak() {
     const state = playback.current;
     if (!supported || !state.active) return;
@@ -85,6 +154,7 @@ export function useReadAloud(options: ReadAloudOptions) {
       return;
     }
     state.waiting = null;
+    if (state.engine === 'ai') { void speakAI(chunk); return; }
     const word = chunk.words[state.word];
     const language = latest.current.book.metadata.language?.replaceAll('_', '-') || 'en';
     const languagePrefix = language.split('-')[0].toLowerCase();
@@ -208,7 +278,8 @@ export function useReadAloud(options: ReadAloudOptions) {
     const contentChanged = state.key !== key;
     const pageAdvanced = state.waiting === 'page' && state.portionId !== options.portion?.id;
     const rateChanged = state.rate !== options.rate;
-    if (bookChanged || contentChanged || pageAdvanced || rateChanged) {
+    const engineChanged = state.engine !== engine;
+    if (bookChanged || contentChanged || pageAdvanced || rateChanged || engineChanged) {
       const cursor = bookChanged ? null : state.cursor;
       cancelUtterance();
       state.fingerprint = options.book.fingerprint;
@@ -219,6 +290,7 @@ export function useReadAloud(options: ReadAloudOptions) {
       state.key = key;
       state.portionId = options.portion?.id;
       state.rate = options.rate;
+      state.engine = engine;
       state.chunks = chunks;
       state.waiting = null;
       state.chunk = 0;
@@ -236,9 +308,12 @@ export function useReadAloud(options: ReadAloudOptions) {
       if (bookChanged) {
         finish();
         setError(null);
-      } else if (state.active) {
+      } else if (state.active && supported) {
         speak();
+      } else if (!supported) {
+        finish();
       }
+      if (engineChanged) setError(null);
     } else if (state.active && state.waiting === 'layout') {
       if (options.canGoNext) {
         state.waiting = 'page';
@@ -247,12 +322,14 @@ export function useReadAloud(options: ReadAloudOptions) {
         finish();
       }
     }
-  }, [key, options.portion?.id, options.book.fingerprint, options.rate, options.canGoNext, options.paginationPending]);
+  }, [key, options.portion?.id, options.book.fingerprint, options.rate, engine, supported, options.canGoNext, options.paginationPending]);
 
   useEffect(() => () => {
     playback.current.active = false;
     cancelUtterance();
+    aiSpeech.current?.dispose();
+    aiSpeech.current = null;
   }, []);
 
-  return { supported, isPlaying, spokenWord, spokenSentence, error, toggle };
+  return { supported, isPlaying, spokenWord, spokenSentence, error, status, aiLanguageSupported, toggle };
 }

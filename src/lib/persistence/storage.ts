@@ -30,6 +30,7 @@ export const DEFAULT_SETTINGS: ReaderSettings = {
   horizontalPadding: 28,
   theme: 'dark',
   speechRate: 1,
+  speechEngine: 'built-in',
   hyphenation: false,
   backgroundAnimation: false
 };
