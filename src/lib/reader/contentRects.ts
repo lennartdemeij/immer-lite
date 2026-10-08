@@ -29,8 +29,46 @@ function normalizeRect(rect: DOMRect, containerRect: DOMRect): ReaderRectSnapsho
 
 function getRangeClientRects(range: Range, container: HTMLElement): ReaderRectSnapshot[] {
   const containerRect = container.getBoundingClientRect();
+  const root = range.commonAncestorContainer;
+  const nodes: Node[] = [];
+  if (root.nodeType === Node.TEXT_NODE) {
+    nodes.push(root);
+  } else {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let node: Node | null;
+    while ((node = walker.nextNode())) {
+      if (range.intersectsNode(node)) nodes.push(node);
+    }
+  }
 
-  return Array.from(range.getClientRects())
+  // Measuring the entire range also returns boxes for selected wrappers,
+  // which overlap their text boxes. Measure only the clipped text nodes.
+  const rects = nodes.flatMap((node) => {
+    const textRange = document.createRange();
+    textRange.setStart(node, range.startContainer === node ? range.startOffset : 0);
+    textRange.setEnd(node, range.endContainer === node ? range.endOffset : node.textContent?.length ?? 0);
+    return textRange.collapsed ? [] : Array.from(textRange.getClientRects());
+  }).filter((rect) => rect.width > 0 && rect.height > 0);
+  const lines: DOMRect[] = [];
+  for (const rect of rects) {
+    const line = lines.find((candidate) =>
+      Math.min(candidate.bottom, rect.bottom) - Math.max(candidate.top, rect.top) >=
+        Math.min(candidate.height, rect.height) * 0.8 &&
+      rect.left <= candidate.right + 1 && rect.right >= candidate.left - 1
+    );
+    if (line) {
+      const right = Math.max(line.right, rect.right);
+      const bottom = Math.max(line.bottom, rect.bottom);
+      line.x = Math.min(line.x, rect.x);
+      line.y = Math.min(line.y, rect.y);
+      line.width = right - line.x;
+      line.height = bottom - line.y;
+    } else {
+      lines.push(new DOMRect(rect.x, rect.y, rect.width, rect.height));
+    }
+  }
+
+  return lines
     .map((rect) => normalizeRect(rect, containerRect))
     .filter((rect): rect is ReaderRectSnapshot => Boolean(rect));
 }

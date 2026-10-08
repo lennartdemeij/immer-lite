@@ -942,10 +942,10 @@ button {
 
 .annotation-sheet {
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-  position: absolute;
+  position: fixed;
   left: calc(12px + var(--safe-left));
   right: calc(12px + var(--safe-right));
-  bottom: calc(12px + var(--safe-bottom));
+  bottom: calc(12px + var(--safe-bottom) + var(--visual-viewport-inset, 0px));
   z-index: 35;
   user-select: none;
   -webkit-user-select: none;
@@ -966,7 +966,7 @@ button {
 .annotation-sheet-viewer {
   left: calc(14px + var(--safe-left));
   right: calc(14px + var(--safe-right));
-  bottom: calc(16px + var(--safe-bottom));
+  bottom: calc(16px + var(--safe-bottom) + var(--visual-viewport-inset, 0px));
 }
 
 .annotation-sheet-viewer .annotation-sheet-inner {

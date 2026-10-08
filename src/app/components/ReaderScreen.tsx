@@ -13,6 +13,7 @@ import type {
 import { PortionView } from './PortionView';
 import { SettingsPanel } from './SettingsPanel';
 import { READER_CHROME } from '../hooks/useReaderViewport';
+import { useVisualViewportInset } from '../hooks/useVisualViewportInset';
 import {
   captureRangeRectSnapshots,
   measureAnnotationRectSnapshots
@@ -344,6 +345,7 @@ export function ReaderScreen({
   const settingsPanelRef = useRef<HTMLElement>(null);
   const settingsButtonRef = useRef<HTMLButtonElement | null>(null);
   const annotationSheetRef = useRef<HTMLDivElement | null>(null);
+  const visualViewportInset = useVisualViewportInset();
 
   function clearSnapTimeout() {
     if (snapTimeoutRef.current !== null) {
@@ -1502,6 +1504,7 @@ export function ReaderScreen({
     <div
       ref={containerRef}
       className={`reader-shell theme-${settings.theme}`}
+      style={{ '--visual-viewport-inset': `${visualViewportInset}px` } as CSSProperties}
     >
       <header className="reader-header">
         <div className="reader-header-copy">
