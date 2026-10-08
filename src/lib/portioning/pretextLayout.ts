@@ -252,6 +252,12 @@ export function restoreCollapsedSpacesForRender(
         fragmentStartsItemBoundary(fragment) &&
         itemHasCollapsedLeadingSpace(item)
       ) {
+        // A restored inline space occupies a canonical character. A synthetic
+        // sentence separator instead has its own leadingSpaceOffset.
+        if (typeof meta?.leadingSpaceOffset !== 'number') {
+          itemTextOffsets.set(fragment.itemIndex, localCursor + fragment.text.length + 1);
+          if (typeof blockEnd === 'number') blockEnd += 1;
+        }
         const previousFragmentInLine = fragments[fragments.length - 1];
         if (previousFragmentInLine) {
           text = ` ${text}`;
@@ -259,6 +265,9 @@ export function restoreCollapsedSpacesForRender(
             blockStart = meta.leadingSpaceOffset;
           }
         } else {
+          if (typeof meta?.leadingSpaceOffset !== 'number' && typeof blockStart === 'number') {
+            blockStart += 1;
+          }
           const previousLine = renderedLines[lineIndex - 1];
           const previousLineFragment = previousLine?.fragments[previousLine.fragments.length - 1];
           if (previousLineFragment && !/\s$/.test(previousLineFragment.text)) {
@@ -268,6 +277,8 @@ export function restoreCollapsedSpacesForRender(
               blockStart = meta.leadingSpaceOffset + 1;
               blockEnd =
                 typeof blockStart === 'number' ? blockStart + fragment.text.length : undefined;
+            } else if (typeof meta?.blockStart === 'number') {
+              previousLineFragment.blockEnd = meta.blockStart + 1;
             }
           }
         }

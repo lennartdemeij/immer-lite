@@ -203,4 +203,28 @@ describe('buildRichSlice', () => {
     expect(lines[0].fragments.map((fragment) => fragment.text).join('')).toBe('Sentence one. ');
     expect(lines[1].fragments.map((fragment) => fragment.text).join('')).toBe('Sentence two.');
   });
+
+  it.each([false, true])('keeps canonical offsets after a restored inline space (wrapped: %s)', (wrapped) => {
+    const block = makeBlock();
+    block.text = 'certain sacrality grows.';
+    block.inlineContent = [
+      { id: 's1', text: 'certain ', marks: [], startOffset: 0, endOffset: 8 },
+      { id: 's2', text: 'sacrality grows.', marks: ['italic'], startOffset: 8, endOffset: 24 }
+    ];
+    block.sentences = [{ id: 'sentence', index: 0, text: block.text, inlineIds: ['s1', 's2'], startOffset: 0, endOffset: 24 }];
+    const first = { itemIndex: 0, text: 'certain', gapBefore: 0, start: { segmentIndex: 0, graphemeIndex: 0 } };
+    const second = { itemIndex: 1, text: 'sacrality ', gapBefore: 0, start: { segmentIndex: 0, graphemeIndex: 0 } };
+    const third = { itemIndex: 1, text: 'grows.', gapBefore: 0, start: { segmentIndex: 1, graphemeIndex: 0 } };
+    const lines = restoreCollapsedSpacesForRender(
+      wrapped ? [{ fragments: [first] }, { fragments: [second] }, { fragments: [third] }]
+        : [{ fragments: [first, second] }, { fragments: [third] }],
+      buildRichSlice(block, 0, 1, settings)
+    );
+    const fragments = lines.flatMap((line) => line.fragments);
+    expect(fragments.map((fragment) => fragment.text).join('')).toBe(block.text);
+    for (const fragment of fragments) {
+      expect(block.text.slice(fragment.blockStart, fragment.blockEnd)).toBe(fragment.text);
+    }
+    expect(fragments.at(-1)?.blockEnd).toBe(24);
+  });
 });

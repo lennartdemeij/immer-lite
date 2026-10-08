@@ -5,6 +5,7 @@ export interface ReaderSettings {
   lineHeight: number;
   horizontalPadding: number;
   theme: ThemeMode;
+  speechRate?: number;
 }
 
 export interface ViewportMetrics {

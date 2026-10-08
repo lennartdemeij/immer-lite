@@ -453,6 +453,7 @@ export function App() {
             }
             portionCount={portionCount}
             portionIndex={currentIndex}
+            paginationPending={repaginating}
             settings={displaySettings}
             requestedSettings={settings}
             onSettingsChange={setSettings}

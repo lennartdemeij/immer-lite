@@ -28,7 +28,8 @@ export const DEFAULT_SETTINGS: ReaderSettings = {
   fontSize: 21,
   lineHeight: 1.72,
   horizontalPadding: 28,
-  theme: 'dark'
+  theme: 'dark',
+  speechRate: 1
 };
 
 export function loadSettings(): ReaderSettings {

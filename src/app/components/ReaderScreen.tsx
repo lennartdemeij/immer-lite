@@ -14,6 +14,8 @@ import { PortionView } from './PortionView';
 import { SettingsPanel } from './SettingsPanel';
 import { READER_CHROME } from '../hooks/useReaderViewport';
 import { useVisualViewportInset } from '../hooks/useVisualViewportInset';
+import { useReadAloud } from '../hooks/useReadAloud';
+import { ReadAloudPanel, SpeakerIcon } from './ReadAloudPanel';
 import {
   captureRangeRectSnapshots,
   measureAnnotationRectSnapshots
@@ -34,6 +36,7 @@ interface ReaderScreenProps {
   nextPortion: ReaderPortion | null;
   portionCount: number;
   portionIndex: number;
+  paginationPending: boolean;
   settings: ReaderSettings;
   requestedSettings: ReaderSettings;
   onSettingsChange: (settings: ReaderSettings) => void;
@@ -277,6 +280,7 @@ export function ReaderScreen({
   nextPortion,
   portionCount,
   portionIndex,
+  paginationPending,
   settings,
   requestedSettings,
   onSettingsChange,
@@ -290,6 +294,14 @@ export function ReaderScreen({
   containerRef
 }: ReaderScreenProps) {
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [readAloudOpen, setReadAloudOpen] = useState(false);
+  const readAloudPanelRef = useRef<HTMLElement>(null);
+  const readAloudButtonRef = useRef<HTMLButtonElement>(null);
+  const readAloud = useReadAloud({
+    book, portion, rate: requestedSettings.speechRate ?? 1,
+    canGoNext: Boolean(nextPortion), paginationPending, onNext
+  });
+  const [spokenWordRects, setSpokenWordRects] = useState<ReaderRectSnapshot[]>([]);
   const [dragOffset, setDragOffset] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const [snapDirection, setSnapDirection] = useState<SnapDirection | null>(null);
@@ -585,6 +597,25 @@ export function ReaderScreen({
       document.removeEventListener('pointerdown', handlePointerDown, true);
     };
   }, [settingsOpen]);
+
+  useEffect(() => {
+    if (!readAloudOpen) return;
+    const close = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (target && !readAloudPanelRef.current?.contains(target) && !readAloudButtonRef.current?.contains(target)) {
+        setReadAloudOpen(false);
+      }
+    };
+    document.addEventListener('pointerdown', close, true);
+    return () => document.removeEventListener('pointerdown', close, true);
+  }, [readAloudOpen]);
+
+  useEffect(() => {
+    const scope = currentPaneRef.current;
+    const word = readAloud.spokenWord;
+    const range = scope && word && createAnnotationRange(scope, word.blockId, word.startOffset, word.endOffset);
+    setSpokenWordRects(scope && range ? captureRangeRectSnapshots(range, scope) : []);
+  }, [readAloud.spokenWord, portion, viewport]);
 
   useEffect(() => {
     if (!selectionDraft) {
@@ -1514,6 +1545,11 @@ export function ReaderScreen({
         </div>
 
         <div className="reader-actions">
+          <button ref={readAloudButtonRef} type="button" className={`settings-button read-aloud-button${readAloud.isPlaying ? ' playing' : ''}`}
+            aria-label="Open read aloud" aria-expanded={readAloudOpen} aria-controls="read-aloud-panel"
+            onClick={() => { setReadAloudOpen((value) => !value); setSettingsOpen(false); }}>
+            <SpeakerIcon />
+          </button>
           <button
             ref={settingsButtonRef}
             type="button"
@@ -1692,6 +1728,14 @@ export function ReaderScreen({
                   hideLeadingBoundarySceneBreak={hasSceneBreakBoundary(previousPortion, portion)}
                   hideTrailingBoundarySceneBreak={endsWithSceneBreak(portion)}
                 />
+                {spokenWordRects.length > 0 ? (
+                  <div className="annotation-live-overlay speech-word-overlay" aria-hidden="true">
+                    {spokenWordRects.map((rect, index) => (
+                      <div key={`spoken-word-${index}`} className="speech-word-highlight"
+                        style={{ left: `${rect.x}%`, top: `${rect.y}%`, width: `${rect.width}%`, height: `${rect.height}%` }} />
+                    ))}
+                  </div>
+                ) : null}
                 {touchSelection && selectionDraft ? (
                   <div className="annotation-live-overlay touch-selection-overlay">
                     {selectionDraft.rects.map((rect, index) => (
@@ -1827,6 +1871,10 @@ export function ReaderScreen({
           </div>
         </div>
       ) : null}
+
+      <ReadAloudPanel open={readAloudOpen} isPlaying={readAloud.isPlaying} supported={readAloud.supported}
+        rate={requestedSettings.speechRate ?? 1} error={readAloud.error} panelRef={readAloudPanelRef}
+        onToggle={readAloud.toggle} onRateChange={(speechRate) => onSettingsChange({ ...requestedSettings, speechRate })} />
 
       <SettingsPanel
         panelRef={settingsPanelRef}
