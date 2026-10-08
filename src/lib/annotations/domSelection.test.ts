@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { CanonicalBook } from '../../types/book';
-import { readAnnotationSelection } from './domSelection';
+import { createAnnotationRange, readAnnotationSelection, readTouchWord } from './domSelection';
 
 const book: CanonicalBook = {
   id: 'book',
@@ -65,6 +65,32 @@ function makeScope(): HTMLElement {
 }
 
 describe('readAnnotationSelection', () => {
+  it('builds an adjustable touch range across lines without activating native selection', () => {
+    const scope = makeScope();
+    const range = createAnnotationRange(scope, 'block-1', 28, 35)!;
+    expect(readAnnotationSelection({ range, scope, book, captureRects: () => [] })).toMatchObject({
+      startOffset: 28, endOffset: 35, selectedText: 'yet. He'
+    });
+    expect(window.getSelection()?.isCollapsed).toBe(true);
+    expect(createAnnotationRange(scope, 'different-block', 28, 35)).toBeNull();
+    scope.remove();
+  });
+
+  it('hit-tests a word using canonical offsets without changing native selection', () => {
+    const scope = makeScope();
+    const node = scope.querySelectorAll('span[data-block-start]')[1].firstChild!;
+    Object.defineProperty(document, 'caretPositionFromPoint', {
+      configurable: true, value: () => ({ offsetNode: node, offset: 2 })
+    });
+    try {
+      expect(readTouchWord(scope, book, 50, 50)).toEqual({ blockId: 'block-1', start: 33, end: 35 });
+      expect(window.getSelection()?.isCollapsed).toBe(true);
+    } finally {
+      Reflect.deleteProperty(document, 'caretPositionFromPoint');
+      scope.remove();
+    }
+  });
+
   it('uses canonical fragment offsets across visual line wrappers', () => {
     const scope = makeScope();
     const fragments = scope.querySelectorAll('span[data-block-start]');

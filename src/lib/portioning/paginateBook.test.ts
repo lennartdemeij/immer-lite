@@ -73,6 +73,7 @@ vi.mock('./pretextLayout', () => ({
 }));
 
 import { paginateBook, findPortionIndexForAnchor } from './paginateBook';
+import { renderTextSlice } from './pretextLayout';
 import { preserveAnchorAfterRepagination } from '../reader/anchors';
 
 const settings: ReaderSettings = {
@@ -155,6 +156,68 @@ beforeEach(() => {
 });
 
 describe('paginateBook', () => {
+  it('refreshes the reading section before laying out the rest of the book', async () => {
+    const book = makeBook([makeTextBlock('earlier', 100, 0)]);
+    book.sections.push({
+      ...book.sections[0], id: 'section-1', index: 1,
+      blocks: [makeTextBlock('reading', 8, 1)]
+    });
+    book.totalBlocks = 2;
+    const anchor = { blockId: 'reading', blockOrder: 1, sentenceIndex: 0, lineOffset: 0 };
+    let previewed = false;
+    const onPreview = (result: { portions: Array<{ start: { blockId: string } }> }) => {
+      previewed = true;
+      expect(result.portions[0].start.blockId).toBe('reading');
+      expect(vi.mocked(renderTextSlice).mock.calls.some(([block]) => block.id === 'earlier')).toBe(false);
+    };
+    await paginateBook(book, {
+      width: 390, height: 844, contentWidth: 320, contentHeight: 240
+    }, settings, anchor, { onPreview });
+    expect(previewed).toBe(true);
+  });
+
+  it('stops obsolete slider layouts instead of finishing the whole book', async () => {
+    const book = makeBook([makeTextBlock('long', 100, 0)]);
+    const controller = new AbortController();
+    controller.abort();
+    await expect(paginateBook(book, {
+      width: 390, height: 844, contentWidth: 320, contentHeight: 240
+    }, settings, undefined, { signal: controller.signal })).rejects.toMatchObject({ name: 'AbortError' });
+    expect(renderTextSlice).not.toHaveBeenCalled();
+  });
+
+  it('preserves full-book boundaries after a preview deep in a section', async () => {
+    const book = makeBook([makeTextBlock('earlier', 4, 0)]);
+    book.sections.push({ ...book.sections[0], id: 'section-1', index: 1, blocks: [makeTextBlock('reading', 20, 1)] });
+    book.sections.push({ ...book.sections[0], id: 'section-2', index: 2, blocks: [makeTextBlock('later', 4, 2)] });
+    book.totalBlocks = 3;
+    const viewport = { width: 390, height: 844, contentWidth: 320, contentHeight: 240 };
+    const anchor = { blockId: 'reading', blockOrder: 1, sentenceIndex: 15, lineOffset: 0 };
+    const baseline = await paginateBook(book, viewport, settings, anchor);
+    const previews: number[] = [];
+    const updated = await paginateBook(book, viewport, settings, anchor, { onPreview: (result) => {
+      const index = findPortionIndexForAnchor(result.portions, anchor);
+      expect(result.portions[index].start.blockId).toBe('reading');
+      expect(result.portions[index + 1]).toBeDefined();
+      previews.push(result.portions.length);
+    } });
+    expect(previews[0]).toBeLessThan(previews.at(-1)!);
+    expect(updated).toEqual(baseline);
+  });
+
+  it('cancels background work when another slider value replaces the preview', async () => {
+    const book = makeBook([makeTextBlock('reading', 100, 0)]);
+    const controller = new AbortController();
+    const onPreview = vi.fn(() => controller.abort());
+    await expect(paginateBook(book, {
+      width: 390, height: 844, contentWidth: 320, contentHeight: 240
+    }, settings, { blockId: 'reading', blockOrder: 0, sentenceIndex: 0, lineOffset: 0 }, {
+      onPreview, signal: controller.signal
+    })).rejects.toMatchObject({ name: 'AbortError' });
+    expect(onPreview).toHaveBeenCalledTimes(1);
+    expect(renderTextSlice).toHaveBeenCalledTimes(2);
+  });
+
   it('cuts portions on sentence boundaries instead of crude character counts', async () => {
     const book = makeBook([makeTextBlock('block-1', 4, 0)]);
     const viewport: ViewportMetrics = {

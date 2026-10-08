@@ -21,7 +21,7 @@ import {
   createTextAnnotation,
   groupAnnotationsByBlock
 } from '../../lib/annotations/domain';
-import { readAnnotationSelection } from '../../lib/annotations/domSelection';
+import { createAnnotationRange, readAnnotationSelection, readTouchWord } from '../../lib/annotations/domSelection';
 import { getAnnotationPortionIndexes } from '../../lib/annotations/navigation';
 
 interface ReaderScreenProps {
@@ -34,6 +34,7 @@ interface ReaderScreenProps {
   portionCount: number;
   portionIndex: number;
   settings: ReaderSettings;
+  requestedSettings: ReaderSettings;
   onSettingsChange: (settings: ReaderSettings) => void;
   onFileSelected: (file: File) => void;
   onPrevious: () => void;
@@ -276,6 +277,7 @@ export function ReaderScreen({
   portionCount,
   portionIndex,
   settings,
+  requestedSettings,
   onSettingsChange,
   onFileSelected,
   onPrevious,
@@ -300,6 +302,16 @@ export function ReaderScreen({
     originY: 50
   });
   const [selectionEnabled, setSelectionEnabled] = useState(false);
+  const [touchSelection, setTouchSelection] = useState(false);
+  const touchSelectionRef = useRef<{
+    pointerId: number | null;
+    blockId: string;
+    start: number;
+    end: number;
+    anchorStart: number;
+    anchorEnd: number;
+    handle?: 'start' | 'end';
+  } | null>(null);
   const [selectionDraft, setSelectionDraft] = useState<AnnotationSelection | null>(null);
   const [annotationNote, setAnnotationNote] = useState('');
   const [activeAnnotation, setActiveAnnotation] = useState<TextAnnotation | null>(null);
@@ -356,6 +368,61 @@ export function ReaderScreen({
 
   function clearDomSelection() {
     window.getSelection()?.removeAllRanges();
+    touchSelectionRef.current = null;
+    setTouchSelection(false);
+  }
+
+  function updateTouchSelection() {
+    const state = touchSelectionRef.current;
+    const scope = currentPaneRef.current;
+    if (!state || !scope) return;
+    const range = createAnnotationRange(scope, state.blockId, state.start, state.end);
+    if (range) {
+      setSelectionDraft(readAnnotationSelection({ range, scope, book, captureRects: captureRangeRectSnapshots }));
+    }
+  }
+
+  function startSelectionHandle(event: React.PointerEvent<HTMLButtonElement>, handle: 'start' | 'end') {
+    const state = touchSelectionRef.current;
+    if (!state) return;
+    event.preventDefault();
+    event.stopPropagation();
+    state.pointerId = event.pointerId;
+    state.handle = handle;
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function moveTouchSelection(event: React.PointerEvent<HTMLElement>) {
+    const state = touchSelectionRef.current;
+    const scope = currentPaneRef.current;
+    if (!state || state.pointerId !== event.pointerId || !scope) return false;
+    event.preventDefault();
+    // Handles sit just below the text, so hit-test above their touch target.
+    const word = readTouchWord(scope, book, event.clientX, event.clientY - (state.handle ? 18 : 0));
+    if (!word || word.blockId !== state.blockId) return true;
+    if (state.handle === 'start') {
+      state.start = Math.min(word.start, state.end - 1);
+    } else if (state.handle === 'end') {
+      state.end = Math.max(word.end, state.start + 1);
+    } else {
+      state.start = Math.min(state.anchorStart, word.start);
+      state.end = Math.max(state.anchorEnd, word.end);
+    }
+    updateTouchSelection();
+    return true;
+  }
+
+  function endTouchSelection(event: React.PointerEvent<HTMLElement>) {
+    const state = touchSelectionRef.current;
+    if (!state || state.pointerId !== event.pointerId) return false;
+    state.pointerId = null;
+    state.handle = undefined;
+    pointerState.current = null;
+    longPressTriggeredRef.current = false;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    return true;
   }
 
   function readSelectionDraftFromDom() {
@@ -450,6 +517,9 @@ export function ReaderScreen({
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event.target as HTMLElement | null)?.closest('input, textarea, select, [contenteditable="true"]')) {
+        return;
+      }
       if (isDragging || snapDirection) {
         return;
       }
@@ -529,6 +599,10 @@ export function ReaderScreen({
         return;
       }
 
+      if (touchSelection && currentPaneRef.current?.contains(target)) {
+        return;
+      }
+
       setAnnotationNote('');
       setSelectionDraft(null);
       setSelectionEnabled(false);
@@ -540,7 +614,7 @@ export function ReaderScreen({
     return () => {
       document.removeEventListener('click', handleDocumentClick, true);
     };
-  }, [selectionDraft]);
+  }, [selectionDraft, touchSelection]);
 
   useEffect(() => {
     if (!portion) {
@@ -557,10 +631,10 @@ export function ReaderScreen({
     setAnnotationNote('');
     clearSelectionFinalizeTimeout();
     clearDomSelection();
-  }, [portion?.id]);
+  }, [portion]);
 
   useEffect(() => {
-    if (!selectionEnabled) {
+    if (!selectionEnabled || touchSelection) {
       return;
     }
 
@@ -590,10 +664,10 @@ export function ReaderScreen({
       document.removeEventListener('pointerup', finalizeSelection, true);
       document.removeEventListener('touchend', finalizeSelection, true);
     };
-  }, [readSelectionDraftFromDom, selectionEnabled]);
+  }, [readSelectionDraftFromDom, selectionEnabled, touchSelection]);
 
   useEffect(() => {
-    if (!selectionEnabled || !selectionDraft) {
+    if (!selectionEnabled || !selectionDraft || touchSelection) {
       return;
     }
 
@@ -622,7 +696,7 @@ export function ReaderScreen({
 
     document.addEventListener('selectionchange', syncSelectionDraft);
     return () => document.removeEventListener('selectionchange', syncSelectionDraft);
-  }, [readSelectionDraftFromDom, selectionDraft, selectionEnabled]);
+  }, [readSelectionDraftFromDom, selectionDraft, selectionEnabled, touchSelection]);
 
   useEffect(() => {
     const currentPane = currentPaneRef.current;
@@ -855,6 +929,12 @@ export function ReaderScreen({
         (activeNavigationItem.topPx + activeNavigationItem.heightPx / 2)
       : 0;
   const navigationStripOffset = navigationBaseOffset + progressDragOffset;
+  const visibleNavigationItems = portionNavigation.items.filter((item) =>
+    progressTrackHeight <= 0 || (
+      item.topPx + item.heightPx + navigationStripOffset >= -PORTION_NAV_ITEM_HEIGHT_PX &&
+      item.topPx + navigationStripOffset <= progressTrackHeight + PORTION_NAV_ITEM_HEIGHT_PX
+    )
+  );
   const continuationStyles = useMemo(() => {
     const stageWidth = stageRef.current?.clientWidth ?? viewport?.width ?? 0;
     if (stageHeight <= 0 || stageWidth <= 0 || !portion) {
@@ -1172,6 +1252,14 @@ export function ReaderScreen({
   }
 
   function handlePointerDown(event: React.PointerEvent<HTMLElement>) {
+    if (touchSelection && event.pointerType !== 'mouse') {
+      setSelectionEnabled(false);
+      setSelectionDraft(null);
+      setAnnotationNote('');
+      clearDomSelection();
+      event.preventDefault();
+      return;
+    }
     if (snapDirection || selectionEnabled) {
       return;
     }
@@ -1195,15 +1283,28 @@ export function ReaderScreen({
     longPressEligibleRef.current = withinCurrentText && !interactiveTarget;
     clearLongPressTimeout();
     if (longPressEligibleRef.current) {
+      const isTouch = event.pointerType !== 'mouse';
+      if (isTouch) event.preventDefault();
       longPressTimeoutRef.current = window.setTimeout(() => {
         if (!pointerState.current || pointerState.current.pointerId !== event.pointerId) {
           return;
+        }
+        if (isTouch) {
+          const scope = currentPaneRef.current;
+          const word = scope && readTouchWord(scope, book, event.clientX, event.clientY);
+          if (!word) return;
+          touchSelectionRef.current = {
+            ...word, pointerId: event.pointerId, anchorStart: word.start, anchorEnd: word.end
+          };
+          setTouchSelection(true);
+          updateTouchSelection();
+          stageElementRef.current?.setPointerCapture(event.pointerId);
         }
         longPressTriggeredRef.current = true;
         setSelectionEnabled(true);
         setIsDragging(false);
         isDraggingRef.current = false;
-        if (stageElementRef.current?.hasPointerCapture(event.pointerId)) {
+        if (!isTouch && stageElementRef.current?.hasPointerCapture(event.pointerId)) {
           stageElementRef.current.releasePointerCapture(event.pointerId);
         }
       }, LONG_PRESS_MS);
@@ -1214,6 +1315,7 @@ export function ReaderScreen({
   }
 
   function handlePointerMove(event: React.PointerEvent<HTMLElement>) {
+    if (moveTouchSelection(event)) return;
     const state = pointerState.current;
     if (!state || state.pointerId !== event.pointerId || snapDirection || longPressTriggeredRef.current) {
       return;
@@ -1229,6 +1331,8 @@ export function ReaderScreen({
     if (!state.moved) {
       return;
     }
+
+    clearLongPressTimeout();
 
     if (Math.abs(deltaY) < Math.abs(deltaX)) {
       return;
@@ -1255,6 +1359,7 @@ export function ReaderScreen({
   }
 
   function handlePointerEnd(event: React.PointerEvent<HTMLElement>) {
+    if (endTouchSelection(event)) return;
     const state = pointerState.current;
     if (!state || state.pointerId !== event.pointerId) {
       return;
@@ -1449,7 +1554,7 @@ export function ReaderScreen({
                 />
               );
             })}
-            {portionNavigation.items.map((item) => {
+            {visibleNavigationItems.map((item) => {
               const stateClass =
                 item.index === activeNavigationIndex
                   ? 'active'
@@ -1489,7 +1594,7 @@ export function ReaderScreen({
           '--navigator-tilt-y': `${progressTilt.rotateY}deg`,
           '--navigator-tilt-z': `${progressTilt.rotateZ}deg`,
           '--navigator-tilt-origin-y': `${progressTilt.originY}%`,
-          touchAction: selectionEnabled ? 'auto' : 'none'
+          touchAction: selectionEnabled && !touchSelection ? 'auto' : 'none'
         } as CSSProperties}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
@@ -1566,7 +1671,8 @@ export function ReaderScreen({
           </div>
           <div
             ref={currentPaneRef}
-            className={`portion-pane portion-pane-current${selectionEnabled ? ' selection-enabled' : ''}`}
+            className={`portion-pane portion-pane-current${selectionEnabled && !touchSelection ? ' selection-enabled' : ''}`}
+            onContextMenu={(event) => event.preventDefault()}
             style={{
               height: portion ? `${paneLayout.currentHeight}px` : '0px',
               transform: `translateY(${paneLayout.currentTop + dragOffset}px)`,
@@ -1583,6 +1689,27 @@ export function ReaderScreen({
                   hideLeadingBoundarySceneBreak={hasSceneBreakBoundary(previousPortion, portion)}
                   hideTrailingBoundarySceneBreak={endsWithSceneBreak(portion)}
                 />
+                {touchSelection && selectionDraft ? (
+                  <div className="annotation-live-overlay touch-selection-overlay">
+                    {selectionDraft.rects.map((rect, index) => (
+                      <div key={`selection-${index}`} className="annotation-live-rect"
+                        style={{ left: `${rect.x}%`, top: `${rect.y}%`, width: `${rect.width}%`, height: `${rect.height}%` }} />
+                    ))}
+                    {(['start', 'end'] as const).map((handle) => {
+                      const rect = handle === 'start' ? selectionDraft.rects[0] : selectionDraft.rects.at(-1);
+                      return rect ? (
+                        <button key={handle} type="button" className={`selection-handle selection-handle-${handle}`}
+                          aria-label={`Adjust selection ${handle}`}
+                          style={{ left: `${rect.x + (handle === 'end' ? rect.width : 0)}%`, top: `${rect.y + rect.height}%` }}
+                          onPointerDown={(event) => startSelectionHandle(event, handle)}
+                          onPointerMove={moveTouchSelection}
+                          onPointerUp={endTouchSelection}
+                          onPointerCancel={endTouchSelection}
+                          onClick={(event) => event.stopPropagation()} />
+                      ) : null;
+                    })}
+                  </div>
+                ) : null}
                 {activeAnnotationRects.length > 0 ? (
                   <div className="annotation-live-overlay" aria-hidden="true">
                     {activeAnnotationRects.map((rect, index) => (
@@ -1701,7 +1828,7 @@ export function ReaderScreen({
       <SettingsPanel
         panelRef={settingsPanelRef}
         open={settingsOpen}
-        settings={settings}
+        settings={requestedSettings}
         onChange={onSettingsChange}
         onFileSelected={onFileSelected}
       />

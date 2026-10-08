@@ -316,18 +316,64 @@ async function yieldToBrowser(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
+export interface PaginationOptions {
+  signal?: AbortSignal;
+  onPreview?: (result: PaginationResult) => void;
+}
+
+/** Reflow the reading section first, then restore the full-book navigation. */
 export async function paginateBook(
   book: CanonicalBook,
   viewport: ViewportMetrics,
   settings: ReaderSettings,
-  _startAnchor?: ReaderAnchor
+  startAnchor?: ReaderAnchor,
+  options: PaginationOptions = {}
+): Promise<PaginationResult> {
+  const prioritySection = options.onPreview && startAnchor
+    ? book.sections.findIndex((section) => section.blocks.some((block) => block.id === startAnchor.blockId))
+    : -1;
+  if (prioritySection < 0) {
+    return paginateRange(book, viewport, settings, 0, book.sections.length, options);
+  }
+
+  const current = await paginateRange(
+    book, viewport, settings, prioritySection, prioritySection + 1, options, startAnchor
+  );
+  // Make the whole reading section navigable while other sections reflow.
+  options.onPreview?.(current);
+  await yieldToBrowser();
+  options.signal?.throwIfAborted();
+  const before = await paginateRange(book, viewport, settings, 0, prioritySection, { signal: options.signal });
+  const after = await paginateRange(
+    book, viewport, settings, prioritySection + 1, book.sections.length, { signal: options.signal }
+  );
+  return {
+    portions: [...before.portions, ...current.portions, ...after.portions].map((portion, index) => ({
+      ...portion, id: `portion-${index}`, index
+    }))
+  };
+}
+
+async function paginateRange(
+  book: CanonicalBook,
+  viewport: ViewportMetrics,
+  settings: ReaderSettings,
+  firstSection: number,
+  endSection: number,
+  options: PaginationOptions,
+  previewAnchor?: ReaderAnchor
 ): Promise<PaginationResult> {
   const portions: ReaderPortion[] = [];
-  let cursor: Cursor | null = getFirstCursor(book);
+  let cursor: Cursor | null = { ...getFirstCursor(book), sectionIndex: firstSection };
   let portionIndex = 0;
   let safety = 0;
+  let lastYield = performance.now();
+  let previewIndex: number | null = null;
+  let previewPublished = false;
 
-  while (cursor) {
+  options.signal?.throwIfAborted();
+  while (cursor && cursor.sectionIndex < endSection) {
+    options.signal?.throwIfAborted();
     safety += 1;
     if (safety > book.totalBlocks * 10_000) {
       throw new Error('Pagination stopped due to an unexpected loop.');
@@ -558,8 +604,24 @@ export async function paginateBook(
 
     portionIndex += 1;
     cursor = workingCursor;
-    if (portionIndex % 24 === 0) {
+    if (previewAnchor && !previewPublished) {
+      if (previewIndex === null && (!cursor || compareAnchors(makeAnchor(
+        book, cursor, getBlock(book, cursor) ?? currentBlock, cursor.sentenceIndex, cursor.lineOffset
+      ), previewAnchor) > 0)) {
+        previewIndex = portions.length - 1;
+      }
+      if (previewIndex !== null && (portions.length > previewIndex + 1 || !cursor || cursor.sectionIndex >= endSection)) {
+        options.onPreview?.({ portions: portions.slice() });
+        previewPublished = true;
+        await yieldToBrowser();
+        options.signal?.throwIfAborted();
+        lastYield = performance.now();
+      }
+    }
+    if (performance.now() - lastYield >= 8) {
       await yieldToBrowser();
+      options.signal?.throwIfAborted();
+      lastYield = performance.now();
     }
   }
 

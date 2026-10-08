@@ -563,6 +563,8 @@ button {
   overflow: visible;
   touch-action: none;
   user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
 .chapter-progress {
@@ -901,6 +903,34 @@ button {
   box-shadow: inset 0 0 0 1px rgba(240, 165, 92, 0.28);
 }
 
+.touch-selection-overlay .annotation-live-rect {
+  border-radius: 2px;
+  background: rgba(240, 165, 92, 0.32);
+}
+
+.selection-handle {
+  position: absolute;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  transform: translate(-50%, -8px);
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.selection-handle::after {
+  content: '';
+  position: absolute;
+  top: 8px;
+  left: 12px;
+  width: 16px;
+  height: 20px;
+  border-radius: 0 0 50% 50%;
+  background: var(--navigator-annotation);
+}
+
 .annotation-sheet-backdrop {
   position: absolute;
   inset: 0;
@@ -911,6 +941,7 @@ button {
 }
 
 .annotation-sheet {
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
   position: absolute;
   left: calc(12px + var(--safe-left));
   right: calc(12px + var(--safe-right));
@@ -996,6 +1027,7 @@ button {
 }
 
 .annotation-textarea {
+  font-family: inherit;
   flex: 1;
   width: 100%;
   resize: none;

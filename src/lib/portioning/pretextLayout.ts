@@ -47,6 +47,46 @@ interface MaterializedRichLine {
   fragments: MaterializedRichFragment[];
 }
 
+interface PreparedSlice {
+  slice: RichSlice;
+  prepared: ReturnType<typeof prepareRichInline>;
+  width?: number;
+  lineCount?: number;
+  lines?: RenderLine[];
+}
+
+// Canonical blocks are immutable. Retain only the latest font size and a
+// bounded set of candidate sentence ranges; closed books can be collected.
+const preparedSlices = new WeakMap<TextBlock, { fontSize: number; slices: Map<string, PreparedSlice> }>();
+const inlineIndexes = new WeakMap<TextBlock, Map<string, BookInline>>();
+
+function getPreparedSlice(block: TextBlock, start: number, end: number, settings: ReaderSettings): PreparedSlice {
+  let cache = preparedSlices.get(block);
+  if (!cache || cache.fontSize !== settings.fontSize) {
+    cache = { fontSize: settings.fontSize, slices: new Map() };
+    preparedSlices.set(block, cache);
+  }
+  const key = `${start}:${end}`;
+  let entry = cache.slices.get(key);
+  if (!entry) {
+    const slice = buildRichSlice(block, start, end, settings);
+    entry = { slice, prepared: prepareRichInline(slice.items) };
+    if (cache.slices.size >= 16) {
+      cache.slices.delete(cache.slices.keys().next().value!);
+    }
+    cache.slices.set(key, entry);
+  }
+  return entry;
+}
+
+function setSliceWidth(entry: PreparedSlice, width: number) {
+  if (entry.width !== width) {
+    entry.width = width;
+    entry.lineCount = undefined;
+    entry.lines = undefined;
+  }
+}
+
 function dedupeMarks(marks: string[]): string[] {
   return Array.from(new Set(marks));
 }
@@ -56,7 +96,11 @@ function getSentenceInlineSlice(
   sentenceIndex: number
 ): BookInline[] {
   const sentence = block.sentences[sentenceIndex];
-  const byId = new Map(block.inlineContent.map((inline) => [inline.id, inline]));
+  let byId = inlineIndexes.get(block);
+  if (!byId) {
+    byId = new Map(block.inlineContent.map((inline) => [inline.id, inline]));
+    inlineIndexes.set(block, byId);
+  }
   return sentence.inlineIds
     .map((id) => byId.get(id))
     .filter((value): value is BookInline => Boolean(value));
@@ -250,10 +294,14 @@ export function restoreCollapsedSpacesForRender(
 }
 
 function materializeLines(
-  slice: RichSlice,
+  entry: PreparedSlice,
   width: number
 ): RenderLine[] {
-  const prepared = prepareRichInline(slice.items);
+  setSliceWidth(entry, width);
+  if (entry.lines) {
+    return entry.lines;
+  }
+  const { prepared, slice } = entry;
   const materializedLines: MaterializedRichLine[] = [];
 
   walkRichInlineLineRanges(prepared, width, (range) => {
@@ -268,7 +316,9 @@ function materializeLines(
     });
   });
 
-  return restoreCollapsedSpacesForRender(materializedLines, slice);
+  entry.lines = restoreCollapsedSpacesForRender(materializedLines, slice);
+  entry.lineCount = entry.lines.length;
+  return entry.lines;
 }
 
 export interface TextSliceMeasurement {
@@ -287,16 +337,16 @@ export function measureTextSlice(
   continuationEnd: boolean
 ): TextSliceMeasurement {
   const typography = getBlockTypography(block.kind, settings);
-  const slice = buildRichSlice(block, startSentence, endSentence, settings);
-  const prepared = prepareRichInline(slice.items);
-  const stats = measureRichInlineStats(prepared, viewport.contentWidth - typography.indent);
+  const entry = getPreparedSlice(block, startSentence, endSentence, settings);
+  setSliceWidth(entry, viewport.contentWidth - typography.indent);
+  entry.lineCount ??= measureRichInlineStats(entry.prepared, entry.width!).lineCount;
   const marginTop = continuationStart ? 0 : typography.marginTop;
   const marginBottom = continuationEnd ? 0 : typography.marginBottom;
 
   return {
-    height: stats.lineCount * typography.lineHeightPx + marginTop + marginBottom,
-    lineCount: stats.lineCount,
-    slice
+    height: entry.lineCount * typography.lineHeightPx + marginTop + marginBottom,
+    lineCount: entry.lineCount,
+    slice: entry.slice
   };
 }
 
@@ -310,8 +360,8 @@ export function renderTextSlice(
   continuationEnd: boolean
 ): PortionTextSlice {
   const typography = getBlockTypography(block.kind, settings);
-  const slice = buildRichSlice(block, startSentence, endSentence, settings);
-  const lines = materializeLines(slice, viewport.contentWidth - typography.indent);
+  const entry = getPreparedSlice(block, startSentence, endSentence, settings);
+  const lines = materializeLines(entry, viewport.contentWidth - typography.indent);
 
   return {
     type: 'text',
@@ -342,8 +392,8 @@ export function renderSentenceLineWindow(
   settings: ReaderSettings
 ): { totalLines: number; visibleLines: RenderLine[]; height: number } {
   const typography = getBlockTypography(block.kind, settings);
-  const slice = buildRichSlice(block, sentenceIndex, sentenceIndex + 1, settings);
-  const allLines = materializeLines(slice, viewport.contentWidth - typography.indent);
+  const entry = getPreparedSlice(block, sentenceIndex, sentenceIndex + 1, settings);
+  const allLines = materializeLines(entry, viewport.contentWidth - typography.indent);
   const visibleLines = allLines.slice(lineOffset, lineOffset + maxLines);
 
   return {

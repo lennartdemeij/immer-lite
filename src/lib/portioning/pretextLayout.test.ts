@@ -1,7 +1,18 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { TextBlock } from '../../types/book';
 import type { ReaderSettings } from '../../types/reader';
-import { buildRichSlice, restoreCollapsedSpacesForRender } from './pretextLayout';
+import { buildRichSlice, measureTextSlice, renderTextSlice, restoreCollapsedSpacesForRender } from './pretextLayout';
+import { prepareRichInline, measureRichInlineStats } from '@chenglou/pretext/rich-inline';
+
+vi.mock('@chenglou/pretext/rich-inline', () => ({
+  prepareRichInline: vi.fn((items) => ({ items })),
+  measureRichInlineStats: vi.fn(() => ({ lineCount: 1 })),
+  walkRichInlineLineRanges: vi.fn((_prepared, _width, visit) => visit({})),
+  materializeRichInlineLineRange: vi.fn(() => ({ fragments: [{
+    itemIndex: 0, gapBefore: 0, text: 'Sentence one.',
+    start: { segmentIndex: 0, graphemeIndex: 0 }
+  }] }))
+}));
 
 const settings: ReaderSettings = {
   fontSize: 21,
@@ -52,6 +63,22 @@ function makeBlock(): TextBlock {
 }
 
 describe('buildRichSlice', () => {
+  it('reuses text preparation between fitting, rendering and line-height changes', () => {
+    vi.clearAllMocks();
+    const block = makeBlock();
+    const viewport = { width: 390, height: 844, contentWidth: 320, contentHeight: 600 };
+    measureTextSlice(block, 0, 1, viewport, settings, false, false);
+    renderTextSlice(block, 0, 1, viewport, settings, false, false);
+    const changed = measureTextSlice(block, 0, 1, viewport, { ...settings, lineHeight: 2 }, false, false);
+    expect(changed.height).toBeGreaterThan(42);
+    expect(prepareRichInline).toHaveBeenCalledTimes(1);
+    expect(measureRichInlineStats).toHaveBeenCalledTimes(1);
+    measureTextSlice(block, 0, 1, { ...viewport, contentWidth: 280 }, settings, false, false);
+    expect(measureRichInlineStats).toHaveBeenCalledTimes(2);
+    measureTextSlice(block, 0, 1, viewport, { ...settings, fontSize: 24 }, false, false);
+    expect(prepareRichInline).toHaveBeenCalledTimes(2);
+  });
+
   it('keeps visible spaces between adjacent sentences', () => {
     const slice = buildRichSlice(makeBlock(), 0, 3, settings);
 

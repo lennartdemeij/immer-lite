@@ -1,6 +1,4 @@
 import {
-  startTransition,
-  useDeferredValue,
   useEffect,
   useMemo,
   useRef,
@@ -104,7 +102,14 @@ export function App() {
   const [settings, setSettings] = useState<ReaderSettings>(() =>
     typeof window === 'undefined' ? DEFAULT_SETTINGS : loadSettings()
   );
-  const deferredSettings = useDeferredValue(settings);
+  const layoutSettings = useMemo<ReaderSettings>(() => ({
+    fontSize: settings.fontSize,
+    lineHeight: settings.lineHeight,
+    horizontalPadding: settings.horizontalPadding,
+    theme: 'light'
+  }), [settings.fontSize, settings.lineHeight, settings.horizontalPadding]);
+  const [renderedSettings, setRenderedSettings] = useState(settings);
+  const displaySettings = useMemo(() => ({ ...renderedSettings, theme: settings.theme }), [renderedSettings, settings.theme]);
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(() => getDefaultBookCandidates().length > 0);
   const [repaginating, setRepaginating] = useState(false);
@@ -121,7 +126,8 @@ export function App() {
   const fullscreenRequestInFlightRef = useRef(false);
   const annotationSyncVersionRef = useRef(0);
 
-  const { containerRef, viewport } = useReaderViewport(settings.horizontalPadding);
+  const { containerRef, viewport } = useReaderViewport(layoutSettings.horizontalPadding);
+  const [renderedViewport, setRenderedViewport] = useState(viewport);
   const currentPortion = pagination.portions[currentIndex] ?? null;
 
   useEffect(() => {
@@ -183,19 +189,26 @@ export function App() {
     const desiredAnchor =
       anchorRef.current != null ? clampAnchorToBook(book, anchorRef.current) : getInitialAnchor(book);
     let cancelled = false;
+    const controller = new AbortController();
     setRepaginating(true);
 
-    paginateBook(book, viewport, deferredSettings, desiredAnchor)
-      .then((result) => {
-        if (cancelled) {
-          return;
-        }
+    const applyLayout = (result: PaginationResult) => {
+      if (cancelled) {
+        return;
+      }
+      // Update typography and its line breaks together; keep any navigation
+      // performed while the remainder of the book is being laid out.
+      setPagination(result);
+      setRenderedSettings(layoutSettings);
+      setRenderedViewport(viewport);
+      setCurrentIndex(preserveAnchorAfterRepagination(result.portions, anchorRef.current ?? desiredAnchor));
+    };
 
-        startTransition(() => {
-          setPagination(result);
-          setCurrentIndex(preserveAnchorAfterRepagination(result.portions, desiredAnchor));
-        });
-      })
+    paginateBook(book, viewport, layoutSettings, desiredAnchor, {
+      signal: controller.signal,
+      onPreview: applyLayout
+    })
+      .then(applyLayout)
       .catch((paginationError) => {
         if (cancelled) {
           return;
@@ -214,8 +227,9 @@ export function App() {
 
     return () => {
       cancelled = true;
+      controller.abort();
     };
-  }, [book, deferredSettings, viewport]);
+  }, [book, layoutSettings, viewport]);
 
   useEffect(() => {
     if (!book || !currentPortion) {
@@ -428,7 +442,7 @@ export function App() {
         <>
           <ReaderScreen
             book={book}
-            viewport={viewport}
+            viewport={renderedViewport}
             portions={pagination.portions}
             portion={currentPortion}
             previousPortion={currentIndex > 0 ? pagination.portions[currentIndex - 1] : null}
@@ -439,7 +453,8 @@ export function App() {
             }
             portionCount={portionCount}
             portionIndex={currentIndex}
-            settings={settings}
+            settings={displaySettings}
+            requestedSettings={settings}
             onSettingsChange={setSettings}
             onFileSelected={handleFileSelected}
             onPrevious={() => setCurrentIndex((index) => Math.max(0, index - 1))}
