@@ -41,7 +41,6 @@ export function useReadAloud(options: ReadAloudOptions) {
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const aiSpeech = useRef<KokoroSpeech | null>(null);
-  const aiBufferKey = useRef<string | null>(null);
   const wordTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const playback = useRef({
     active: false, generation: 0, chunk: 0, word: 0,
@@ -111,18 +110,8 @@ export function useReadAloud(options: ReadAloudOptions) {
       const recording = speech.generate(chunk.text, voice, speed);
       // Queue ahead immediately, including across portions, instead of waiting for playback.
       const ahead = [...state.chunks.slice(state.chunk + 1), ...latest.current.nextChunks].slice(0, 3);
-      const prepared = ahead.map((next) => speech.generate(next.text, voice, speed).catch(() => null));
+      ahead.forEach((next) => { void speech.generate(next.text, voice, speed).catch(() => {}); });
       const audio = await recording;
-      if (!current()) return;
-      const bufferKey = `${state.fingerprint}:${voice}:${speed}`;
-      if (aiBufferKey.current !== bufferKey && prepared.length) {
-        // A short first sentence cannot hide inference of a long second one.
-        // Build a one-sentence lead once; the rolling queue maintains it afterwards.
-        setStatus('Buffering AI voice…');
-        await prepared[0];
-        if (!current()) return;
-      }
-      aiBufferKey.current = bufferKey;
       if (!current()) return;
       const allWeights = estimateWordDurations(chunk, 0, 1);
       const offset = allWeights.slice(0, firstWord).reduce((sum, weight) => sum + weight, 0)
@@ -160,7 +149,6 @@ export function useReadAloud(options: ReadAloudOptions) {
       if (!current()) return;
       aiSpeech.current?.dispose();
       aiSpeech.current = null;
-      aiBufferKey.current = null;
       finish();
       setError(cause instanceof Error ? cause.message : 'AI voice could not start. Try again or choose Built-in.');
     }

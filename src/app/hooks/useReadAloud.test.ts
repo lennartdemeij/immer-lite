@@ -96,7 +96,7 @@ afterEach(() => {
 });
 
 describe('read aloud', () => {
-  it('buffers a slow next sentence before starting a short sentence, then advances without waiting', async () => {
+  it('starts the current sentence immediately while a slow next sentence is prepared in the background', async () => {
     let resolveNext!: (value: object) => void;
     const nextAudio = new Promise((resolve) => { resolveNext = resolve; });
     ai.generate.mockImplementation((sentence: string) => sentence === 'Next sentence.'
@@ -104,7 +104,8 @@ describe('read aloud', () => {
     render({ engine: 'ai', portion: page(0, text.length) });
     await act(async () => result.toggle());
     expect(ai.generate).toHaveBeenCalledWith('Next sentence.', expect.any(String), 1);
-    expect(ai.play).not.toHaveBeenCalled();
+    expect(ai.play).toHaveBeenCalledOnce();
+    expect(result.status).toBeNull();
     await act(async () => resolveNext({ samples: new Float32Array(240000), sampleRate: 24000 }));
     expect(ai.play).toHaveBeenCalledOnce();
     await act(async () => ai.play.mock.calls[0][2]());
@@ -119,17 +120,18 @@ describe('read aloud', () => {
     expect(options.onNext).not.toHaveBeenCalled();
   });
 
-  it('does not start playback after pausing while the next sentence is buffering', async () => {
+  it('does not resume playback when background preparation completes after pausing', async () => {
     let resolveNext!: (value: object) => void;
     ai.generate.mockImplementation((sentence: string) => sentence === 'Next sentence.'
       ? new Promise((resolve) => { resolveNext = resolve; })
       : Promise.resolve({ samples: new Float32Array(24000), sampleRate: 24000 }));
     render({ engine: 'ai', portion: page(0, text.length) });
     await act(async () => result.toggle());
-    expect(result.status).toContain('Buffering');
+    expect(ai.play).toHaveBeenCalledOnce();
+    expect(result.status).toBeNull();
     act(() => result.toggle());
     await act(async () => resolveNext({ samples: new Float32Array(24000), sampleRate: 24000 }));
-    expect(ai.play).not.toHaveBeenCalled();
+    expect(ai.play).toHaveBeenCalledOnce();
     expect(result.isPlaying).toBe(false);
   });
 
