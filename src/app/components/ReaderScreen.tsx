@@ -326,6 +326,8 @@ export function ReaderScreen({
   const [progressTrackHeight, setProgressTrackHeight] = useState(0);
   const [progressDragOffset, setProgressDragOffset] = useState(0);
   const [progressDragging, setProgressDragging] = useState(false);
+  const navigatorExpanded = progressDragging || toolsOpen;
+  const navigatorRef = useRef<HTMLElement>(null);
   const [progressTilt, setProgressTilt] = useState<ProgressTilt>({
     rotateY: 0,
     rotateZ: 0,
@@ -655,7 +657,7 @@ export function ReaderScreen({
     if (!toolsOpen && !searchOpen && !settingsOpen && !readAloudOpen) return;
     const close = (event: PointerEvent) => {
       const target = event.target as Node | null;
-      if (!target || toolsRef.current?.contains(target) || searchPanelRef.current?.contains(target)
+      if (!target || toolsRef.current?.contains(target) || navigatorRef.current?.contains(target) || searchPanelRef.current?.contains(target)
         || settingsPanelRef.current?.contains(target) || readAloudPanelRef.current?.contains(target)) return;
       setToolsOpen(false);
       setSearchOpen(false);
@@ -1055,18 +1057,20 @@ export function ReaderScreen({
       item.topPx + navigationStripOffset <= progressTrackHeight + PORTION_NAV_ITEM_HEIGHT_PX
     )
   );
+  // Keep tappable labels below the three-row tools menu.
+  const navigationLabelTop = toolsOpen ? (toolsRef.current?.getBoundingClientRect().bottom ?? 62) + 178 : 24;
   const navigationChapterLabels = useMemo(() => {
-    if (!progressDragging || progressTrackHeight <= 0) return [];
+    if (!navigatorExpanded || progressTrackHeight <= 0) return [];
     const candidates = portionNavigation.items
       .filter((item, index, items) => index === 0 || item.sectionId !== items[index - 1].sectionId)
       .map((item) => {
         const active = item.sectionId === activeNavigationItem?.sectionId;
         return {
-          sectionId: item.sectionId, label: item.label, active,
+          sectionId: item.sectionId, label: item.label, index: item.index, active,
           y: active ? progressTrackHeight / 2 : item.topPx + navigationStripOffset + 8
         };
       })
-      .filter((item) => item.y >= 24 && item.y <= progressTrackHeight - 24)
+      .filter((item) => item.y >= navigationLabelTop && item.y <= progressTrackHeight - 24)
       .sort((left, right) => Number(right.active) - Number(left.active) ||
         Math.abs(left.y - progressTrackHeight / 2) - Math.abs(right.y - progressTrackHeight / 2));
     const labels: typeof candidates = [];
@@ -1074,22 +1078,26 @@ export function ReaderScreen({
       if (labels.every((label) => Math.abs(label.y - candidate.y) >= 42)) labels.push(candidate);
     }
     return labels;
-  }, [progressDragging, progressTrackHeight, portionNavigation.items, activeNavigationItem?.sectionId, navigationStripOffset]);
+  }, [navigatorExpanded, navigationLabelTop, progressTrackHeight, portionNavigation.items, activeNavigationItem?.sectionId, navigationStripOffset]);
   const navigationNoteLabels = useMemo(() => {
     const labels: { annotation: TextAnnotation; index: number; y: number; count: number }[] = [];
+    if (!navigatorExpanded) return labels;
     for (const annotation of annotations) {
       const index = findTextPortionIndex(textPortionIndex, annotation.blockId, annotation.startOffset);
       const item = portionNavigationItemByIndex.get(index);
       if (!item) continue;
-      const y = item.topPx + item.heightPx / 2 + navigationStripOffset;
-      if (y < 12 || y > progressTrackHeight - 12) continue;
+      const markerY = item.topPx + item.heightPx / 2 + navigationStripOffset;
+      const y = [markerY, markerY + 36, markerY - 36].find((position) =>
+        position >= navigationLabelTop && position <= progressTrackHeight - 12 &&
+        navigationChapterLabels.every((chapter) => Math.abs(chapter.y - position) >= 36)
+      );
+      if (y === undefined) continue;
       const nearby = labels.find((label) => Math.abs(label.y - y) < 26);
       if (nearby) { nearby.count += 1; continue; }
-      if (navigationChapterLabels.some((chapter) => Math.abs(chapter.y - y) < 36)) continue;
       labels.push({ annotation, index, y, count: 1 });
     }
     return labels;
-  }, [annotations, textPortionIndex, portionNavigationItemByIndex, navigationStripOffset, progressTrackHeight, navigationChapterLabels]);
+  }, [navigatorExpanded, navigationLabelTop, annotations, textPortionIndex, portionNavigationItemByIndex, navigationStripOffset, progressTrackHeight, navigationChapterLabels]);
   const continuationStyles = useMemo(() => {
     const stageWidth = stageRef.current?.clientWidth ?? viewport?.width ?? 0;
     if (stageHeight <= 0 || stageWidth <= 0 || !portion) {
@@ -1698,8 +1706,9 @@ export function ReaderScreen({
               setToolsOpen((value) => !value);
               setSearchOpen(false); setSettingsOpen(false); setReadAloudOpen(false);
             }}>
-            <svg viewBox="0 0 24 24" className="reader-tool-icon" aria-hidden="true" fill="currentColor">
-              <circle cx="5" cy="12" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="19" cy="12" r="1.5" />
+            <svg viewBox="0 0 24 24" className="reader-tool-icon" aria-hidden="true" fill="none"
+              stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+              <path d="M20 4v16M4 5h11M8 9h7M4 13h11M8 17h7" />
             </svg>
           </button>
           <nav id="reader-tools" className="reader-tools-menu" aria-label="Reading tools" hidden={!toolsOpen}>
@@ -1717,32 +1726,34 @@ export function ReaderScreen({
         </div>
       </header>
 
-      <aside className="chapter-progress" aria-label="Reading progress by chapter">
+      <aside ref={navigatorRef} className="chapter-progress" aria-label="Reading progress by chapter">
         <div className="chapter-progress-note-labels">
           {navigationNoteLabels.map(({ annotation, index, y, count }) => (
             <button key={annotation.id} type="button" className="chapter-progress-note-label"
               style={{ top: `${y}px` }} disabled={readAloud.isPlaying || paginationPending}
               aria-label={`Open note: ${annotation.note}${count > 1 ? ` (${count} nearby notes)` : ''}`}
               title={annotation.note}
-              onClick={() => { onJumpToPortion(index); handleAnnotationPress(annotation); }}>
+              onClick={() => { onJumpToPortion(index); handleAnnotationPress(annotation); setToolsOpen(false); }}>
               <BookmarkIcon /><span>{annotation.note}</span>{count > 1 ? <small>+{count - 1}</small> : null}
             </button>
           ))}
         </div>
-        {progressDragging ? (
-          <div className="chapter-progress-labels" aria-hidden="true">
+        {navigatorExpanded ? (
+          <div className="chapter-progress-labels">
             {navigationChapterLabels.map((chapter) => (
-              <div key={chapter.sectionId}
+              <button key={chapter.sectionId} type="button"
                 className={`chapter-progress-label${chapter.active ? ' active' : ''}`}
-                style={{ top: `${chapter.y}px` }}>
+                style={{ top: `${chapter.y}px` }} disabled={readAloud.isPlaying || paginationPending}
+                aria-label={`Go to ${chapter.label}`}
+                onClick={() => { onJumpToPortion(chapter.index); setToolsOpen(false); }}>
                 {chapter.label}
-              </div>
+              </button>
             ))}
           </div>
         ) : null}
         <div
           ref={progressTrackRef}
-          className={`chapter-progress-track ${progressDragging ? 'dragging' : ''}`}
+          className={`chapter-progress-track${progressDragging ? ' dragging' : ''}${navigatorExpanded ? ' expanded' : ''}`}
           aria-disabled={readAloud.isPlaying}
           onPointerDown={handleProgressPointerDown}
           onPointerMove={handleProgressPointerMove}
@@ -1807,7 +1818,7 @@ export function ReaderScreen({
         className={`reader-stage ${isDragging ? 'dragging' : ''} ${
           snapDirection ? `snapping-${snapDirection}` : ''
         } ${transitionEnabled ? 'transitioning' : ''} ${
-          progressDragging ? 'navigator-dragging' : ''
+          navigatorExpanded ? 'navigator-dragging' : ''
         }`}
         style={{
           '--portion-width': viewport ? `${viewport.contentWidth}px` : '100%',
