@@ -357,6 +357,7 @@ export function ReaderScreen({
     next: 0
   });
   const pointerState = useRef<PointerState | null>(null);
+  const wheelGesture = useRef({ distance: 0, lastAt: 0, locked: false });
   const longPressTimeoutRef = useRef<number | null>(null);
   const longPressEligibleRef = useRef(false);
   const longPressTriggeredRef = useRef(false);
@@ -587,6 +588,43 @@ export function ReaderScreen({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [readAloud.isPlaying, isDragging, nextPortion, onNext, onPrevious, previousPortion, snapDirection]);
+
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    const handleWheel = (event: WheelEvent) => {
+      if (event.ctrlKey || event.shiftKey || Math.abs(event.deltaY) <= Math.abs(event.deltaX)
+        || (event.target as HTMLElement | null)?.closest('button, a, input, textarea, select, [contenteditable="true"], [data-reader-interactive="true"]')) return;
+      event.preventDefault();
+      const gesture = wheelGesture.current;
+      const now = performance.now();
+      // Trackpad momentum belongs to the same gesture until scrolling becomes quiet.
+      if (now - gesture.lastAt > 180) {
+        gesture.distance = 0;
+        gesture.locked = false;
+      }
+      gesture.lastAt = now;
+      if (readAloud.isPlaying || isDragging || snapDirection || selectionEnabled || selectionDraft || activeAnnotation) {
+        gesture.distance = 0;
+        gesture.locked = true;
+        return;
+      }
+      if (gesture.locked) return;
+      const delta = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? stage.clientHeight : 1);
+      if (Math.sign(delta) !== Math.sign(gesture.distance)) gesture.distance = 0;
+      gesture.distance += delta;
+      if (Math.abs(gesture.distance) < 40) return;
+      const direction = gesture.distance > 0 ? 'forward' : 'backward';
+      gesture.distance = 0;
+      gesture.locked = true;
+      if (direction === 'forward' ? nextPortion : previousPortion) {
+        triggerReaderHaptic();
+        animateToNeighbor(direction);
+      }
+    };
+    stage.addEventListener('wheel', handleWheel, { passive: false });
+    return () => stage.removeEventListener('wheel', handleWheel);
+  }, [readAloud.isPlaying, isDragging, snapDirection, selectionEnabled, selectionDraft, activeAnnotation, nextPortion, previousPortion, onNext, onPrevious]);
 
   useEffect(() => {
     if (!readAloud.isPlaying) return;
