@@ -88,6 +88,49 @@ button {
     calc(var(--safe-bottom) + 10px);
 }
 
+.reader-dust {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+  color: var(--text);
+}
+
+.reader-dust-layer {
+  position: absolute;
+  inset: 0 0 -240px;
+  background-size: 320px 240px;
+  background-repeat: repeat;
+}
+
+.reader-dust-far {
+  opacity: 0.08;
+  background-image:
+    radial-gradient(circle at 32px 38px, currentColor 0.7px, transparent 1.2px),
+    radial-gradient(circle at 204px 166px, currentColor 0.6px, transparent 1px),
+    radial-gradient(circle at 284px 84px, currentColor 0.5px, transparent 1px);
+}
+
+.reader-dust-middle {
+  opacity: 0.11;
+  background-image:
+    radial-gradient(circle at 94px 116px, currentColor 1px, transparent 1.8px),
+    radial-gradient(circle at 252px 212px, currentColor 0.8px, transparent 1.5px);
+}
+
+.reader-dust-near {
+  opacity: 0.14;
+  background-image:
+    radial-gradient(circle at 170px 52px, currentColor 1px, transparent 2.8px),
+    radial-gradient(circle at 46px 206px, currentColor 1.2px, transparent 3px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reader-dust { display: none; }
+}
+
 .reader-shellWEG::before {
   content: "";
   position: absolute;

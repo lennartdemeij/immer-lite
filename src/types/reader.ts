@@ -8,6 +8,7 @@ export interface ReaderSettings {
   speechRate?: number;
   hyphenation?: boolean;
   hyphenationLanguage?: string;
+  backgroundAnimation?: boolean;
 }
 
 export interface ViewportMetrics {

@@ -86,6 +86,14 @@ export function SettingsPanel({
         </div>
 
         <div className="settings-group">
+          <label className="settings-checkbox">
+            <span>Background animation</span>
+            <input type="checkbox" checked={settings.backgroundAnimation ?? false}
+              onChange={(event) => onChange({ ...settings, backgroundAnimation: event.target.checked })} />
+          </label>
+        </div>
+
+        <div className="settings-group">
           <span>Theme</span>
           <div className="theme-row">
             {(['light', 'sepia', 'dark'] as const).map((theme) => (

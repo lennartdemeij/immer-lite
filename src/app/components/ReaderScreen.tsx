@@ -12,6 +12,7 @@ import type {
 } from '../../types/reader';
 import { PortionView } from './PortionView';
 import { SettingsPanel } from './SettingsPanel';
+import { ReaderBackground } from './ReaderBackground';
 import { READER_CHROME } from '../hooks/useReaderViewport';
 import { useVisualViewportInset } from '../hooks/useVisualViewportInset';
 import { useReadAloud } from '../hooks/useReadAloud';
@@ -1694,6 +1695,9 @@ export function ReaderScreen({
       className={`reader-shell theme-${settings.theme}`}
       style={{ '--visual-viewport-inset': `${visualViewportInset}px` } as CSSProperties}
     >
+      {requestedSettings.backgroundAnimation ? (
+        <ReaderBackground key={book.fingerprint} portionIndex={portionIndex} paginationPending={paginationPending} />
+      ) : null}
       <input ref={bookInputRef} className="sr-only" type="file"
         accept=".epub,.pdf,application/epub+zip,application/pdf"
         onChange={(event) => {
