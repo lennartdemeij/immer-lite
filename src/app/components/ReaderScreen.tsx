@@ -95,6 +95,7 @@ const SNAP_THRESHOLD_PX = 84;
 const SNAP_ANIMATION_MS = 240;
 const PORTION_NAV_ITEM_HEIGHT_PX = 4;
 const CHAPTER_TRACK_GAP_PX = 3;
+const NAVIGATOR_COVER_HEIGHT_PX = 48;
 const CONTINUATION_BRIDGE_WIDTH_PX = 25;
 const PROGRESS_TILT_MAX_Y_DEG = 34;
 const PROGRESS_TILT_MAX_Z_DEG = 7;
@@ -826,8 +827,9 @@ export function ReaderScreen({
     viewport?.contentHeight
   ]);
 
+  const coverUrl = book.metadata.coverImageHref ? book.resources[book.metadata.coverImageHref]?.objectUrl : undefined;
   const portionNavigation = useMemo(() => {
-    let topPx = 0;
+    let topPx = coverUrl ? NAVIGATOR_COVER_HEIGHT_PX + 8 : 0;
     let previousSectionId: string | null = null;
     const items = portions.map((readerPortion, index) => {
       if (previousSectionId !== null && previousSectionId !== readerPortion.sectionId) {
@@ -850,7 +852,7 @@ export function ReaderScreen({
       items,
       totalHeightPx: topPx
     };
-  }, [portions]);
+  }, [portions, coverUrl]);
   const portionNavigationItemByIndex = useMemo(() => {
     const next = new Map<number, (typeof portionNavigation.items)[number]>();
     portionNavigation.items.forEach((item) => {
@@ -1651,6 +1653,10 @@ export function ReaderScreen({
             }}
             aria-hidden="true"
           >
+            {coverUrl ? (
+              <img className="chapter-progress-cover" src={coverUrl} alt="" draggable={false}
+                style={{ height: `${NAVIGATOR_COVER_HEIGHT_PX}px` }} />
+            ) : null}
             {Array.from(annotationPortionIndexes).map((index) => {
               const item = portionNavigationItemByIndex.get(index);
               if (!item) {

@@ -1123,6 +1123,10 @@ export async function loadEpubBook(file: File): Promise<CanonicalBook> {
     readSpine(opfDoc).filter((item) => item.linear)
   );
   const metadata = measureSync('read-metadata', () => readMetadata(opfDoc));
+  const legacyCoverId = opfDoc.querySelector('metadata meta[name="cover"]')?.getAttribute('content');
+  const coverImage = Object.values(manifest).find((item) => item.properties.includes('cover-image'))
+    ?? (legacyCoverId ? manifest[legacyCoverId] : undefined);
+  if (coverImage?.mediaType.startsWith('image/')) metadata.coverImageHref = coverImage.href;
   const resources = await measureAsync('load-resources', () =>
     loadResourceUrls(zip, manifest)
   );

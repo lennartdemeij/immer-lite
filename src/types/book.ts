@@ -114,6 +114,7 @@ export interface BookSection {
 
 export interface BookMetadata {
   title: string;
+  coverImageHref?: string;
   creator?: string;
   language?: string;
   publisher?: string;

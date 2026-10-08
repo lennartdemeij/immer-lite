@@ -708,6 +708,18 @@ button {
   will-change: transform;
 }
 
+.chapter-progress-cover {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 32px;
+  object-fit: contain;
+  object-position: right bottom;
+  border-radius: 2px;
+  pointer-events: none;
+  -webkit-user-drag: none;
+}
+
 .chapter-progress-track.dragging {
   width: 40px;
 }
