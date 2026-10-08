@@ -48,13 +48,13 @@ export function useReaderViewport(horizontalPadding: number) {
     return {
       width: size.width,
       height: size.height,
-      contentWidth: Math.max(
+      contentWidth: Math.min(700, Math.max(
         240,
         size.width -
           horizontalPadding * 2 -
           getChapterNavigatorGutter(size.width) +
           TEXT_WIDTH_BOOST
-      ),
+      )),
       contentHeight: Math.max(
         200,
         size.height - TOP_CHROME - BOTTOM_CHROME - VERTICAL_PADDING * 2 - PORTION_EDGE_PADDING * 2

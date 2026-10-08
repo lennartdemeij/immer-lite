@@ -1000,6 +1000,26 @@ export function ReaderScreen({
       item.topPx + navigationStripOffset <= progressTrackHeight + PORTION_NAV_ITEM_HEIGHT_PX
     )
   );
+  const navigationChapterLabels = useMemo(() => {
+    if (!progressDragging || progressTrackHeight <= 0) return [];
+    const candidates = portionNavigation.items
+      .filter((item, index, items) => index === 0 || item.sectionId !== items[index - 1].sectionId)
+      .map((item) => {
+        const active = item.sectionId === activeNavigationItem?.sectionId;
+        return {
+          sectionId: item.sectionId, label: item.label, active,
+          y: active ? progressTrackHeight / 2 : item.topPx + navigationStripOffset + 8
+        };
+      })
+      .filter((item) => item.y >= 24 && item.y <= progressTrackHeight - 24)
+      .sort((left, right) => Number(right.active) - Number(left.active) ||
+        Math.abs(left.y - progressTrackHeight / 2) - Math.abs(right.y - progressTrackHeight / 2));
+    const labels: typeof candidates = [];
+    for (const candidate of candidates) {
+      if (labels.every((label) => Math.abs(label.y - candidate.y) >= 42)) labels.push(candidate);
+    }
+    return labels;
+  }, [progressDragging, progressTrackHeight, portionNavigation.items, activeNavigationItem?.sectionId, navigationStripOffset]);
   const continuationStyles = useMemo(() => {
     const stageWidth = stageRef.current?.clientWidth ?? viewport?.width ?? 0;
     if (stageHeight <= 0 || stageWidth <= 0 || !portion) {
@@ -1603,6 +1623,17 @@ export function ReaderScreen({
       </header>
 
       <aside className="chapter-progress" aria-label="Reading progress by chapter">
+        {progressDragging ? (
+          <div className="chapter-progress-labels" aria-hidden="true">
+            {navigationChapterLabels.map((chapter) => (
+              <div key={chapter.sectionId}
+                className={`chapter-progress-label${chapter.active ? ' active' : ''}`}
+                style={{ top: `${chapter.y}px` }}>
+                {chapter.label}
+              </div>
+            ))}
+          </div>
+        ) : null}
         <div
           ref={progressTrackRef}
           className={`chapter-progress-track ${progressDragging ? 'dragging' : ''}`}
