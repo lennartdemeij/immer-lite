@@ -22,6 +22,8 @@ export function createBookSearchIndex(book: CanonicalBook): BookSearchEntry[] {
   ));
 }
 
+export const BOOK_SEARCH_LIMIT = 20;
+
 export function searchBook(index: BookSearchEntry[], query: string): BookSearchResult[] {
   const words = query.trim().split(/\s+/).filter(Boolean);
   if (!words.length) return [];
@@ -40,7 +42,7 @@ export function searchBook(index: BookSearchEntry[], query: string): BookSearchR
         before: `${from ? '…' : ''}${block.text.slice(from, startOffset)}`,
         match: match[0], after: `${block.text.slice(endOffset, to)}${to < block.text.length ? '…' : ''}`
       });
-      if (results.length === 5) return results;
+      if (results.length === BOOK_SEARCH_LIMIT) return results;
     }
   }
   return results;

@@ -19,10 +19,10 @@ function page(start: number, end: number): ReaderPortion {
 }
 
 describe('book search', () => {
-  it('returns at most five occurrences in reading order, including repeats within a paragraph', () => {
-    const results = searchBook([entry('word WORD word word word word'), entry('word', 'next')], 'word');
-    expect(results).toHaveLength(5);
-    expect(results.map((result) => result.startOffset)).toEqual([0, 5, 10, 15, 20]);
+  it('returns at most twenty occurrences in reading order, including repeats within a paragraph', () => {
+    const results = searchBook([entry('word WORD ' + 'word '.repeat(24)), entry('word', 'next')], 'word');
+    expect(results).toHaveLength(20);
+    expect(results.map((result) => result.startOffset)).toEqual(Array.from({ length: 20 }, (_, index) => index * 5));
     expect(results.every((result) => result.blockId === 'paragraph')).toBe(true);
   });
 

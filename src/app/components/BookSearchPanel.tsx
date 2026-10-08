@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { RefObject } from 'react';
+import { BOOK_SEARCH_LIMIT } from '../../lib/reader/search';
 import type { BookSearchResult } from '../../lib/reader/search';
 
 export function SearchIcon() {
@@ -64,7 +65,7 @@ export function BookSearchPanel({ open, query, results, pending, navigationLocke
         <p className="book-search-status" role="status">
           {navigationLocked ? 'Pause reading aloud to jump to a result.'
             : pending ? 'Searching…' : !query.trim() ? 'Find a word or phrase in this book.'
-              : results.length ? `${results.length === 5 ? 'First 5' : results.length} ${results.length === 1 ? 'match' : 'matches'}`
+              : results.length ? `${results.length === BOOK_SEARCH_LIMIT ? `First ${BOOK_SEARCH_LIMIT}` : results.length} ${results.length === 1 ? 'match' : 'matches'}`
                 : 'No matches. Try another word or phrase.'}
         </p>
       </div>

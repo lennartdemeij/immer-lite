@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import { useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import type { CanonicalBook } from '../../types/book';
 import type {
@@ -842,7 +842,9 @@ export function ReaderScreen({
     };
   }, [activeAnnotation, portion?.id, portionIndex, settings.fontSize, settings.horizontalPadding, settings.lineHeight]);
 
-  useEffect(() => {
+  // Adjacent pages can have different heights. Measure before the first paint
+  // so the new text never appears centered using the previous page's height.
+  useLayoutEffect(() => {
     const measure = () => {
       const readHeight = (pane: HTMLDivElement | null) =>
         pane?.querySelector<HTMLElement>('.portion-sheet')?.getBoundingClientRect().height ?? 0;
@@ -1058,8 +1060,8 @@ export function ReaderScreen({
       item.topPx + navigationStripOffset <= progressTrackHeight + PORTION_NAV_ITEM_HEIGHT_PX
     )
   );
-  // Keep tappable labels below the three-row tools menu.
-  const navigationLabelTop = toolsOpen ? (toolsRef.current?.getBoundingClientRect().bottom ?? 62) + 222 : 24;
+  // Keep tappable labels below the compact tools bar.
+  const navigationLabelTop = toolsOpen ? (toolsRef.current?.getBoundingClientRect().bottom ?? 62) + 20 : 24;
   const navigationChapterLabels = useMemo(() => {
     if (!navigatorExpanded || progressTrackHeight <= 0) return [];
     const candidates = portionNavigation.items
@@ -1719,21 +1721,21 @@ export function ReaderScreen({
               <path d="M20 4v16M4 5h11M8 9h7M4 13h11M8 17h7" />
             </svg>
           </button>
-          <nav id="reader-tools" className="reader-tools-menu" aria-label="Reading tools" hidden={!toolsOpen}>
-            <button type="button" aria-controls="book-search-panel" onClick={() => { setToolsOpen(false); setSearchOpen(true); }}>
-              <SearchIcon /><span>Search book</span>
+          <nav id="reader-tools" className="reader-tools-menu" aria-label="Reading tools" hidden={!toolsOpen} onContextMenu={(event) => event.preventDefault()}>
+            <button type="button" aria-label="Search book" aria-controls="book-search-panel" onClick={() => { setToolsOpen(false); setSearchOpen(true); }}>
+              <SearchIcon /><span className="reader-tools-label" aria-hidden="true">Search book</span>
             </button>
             <button ref={readAloudButtonRef} type="button" className={readAloud.isPlaying ? 'playing' : ''}
-              aria-controls="read-aloud-panel" onClick={() => { setToolsOpen(false); setReadAloudOpen(true); }}>
-              <SpeakerIcon /><span>Read aloud</span>{readAloud.isPlaying ? <span className="reader-playing-dot" aria-label="Playing" /> : null}
+              aria-label="Read aloud" aria-controls="read-aloud-panel" onClick={() => { setToolsOpen(false); setReadAloudOpen(true); }}>
+              <SpeakerIcon /><span className="reader-tools-label" aria-hidden="true">Read aloud</span>{readAloud.isPlaying ? <span className="reader-playing-dot" aria-label="Playing" /> : null}
             </button>
-            <button ref={settingsButtonRef} type="button" onClick={() => { setToolsOpen(false); setSettingsOpen(true); }}>
-              <SettingsIcon /><span>Reading settings</span>
+            <button ref={settingsButtonRef} type="button" aria-label="Reading settings" onClick={() => { setToolsOpen(false); setSettingsOpen(true); }}>
+              <SettingsIcon /><span className="reader-tools-label" aria-hidden="true">Reading settings</span>
             </button>
-            <button type="button" onClick={() => bookInputRef.current?.click()}>
+            <button type="button" aria-label="Load book" onClick={() => bookInputRef.current?.click()}>
               <svg className="reader-tool-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
                 <path d="M3 5h7l2 3h9v12H3zM3 8h9" strokeLinejoin="round" />
-              </svg><span>Load book</span>
+              </svg><span className="reader-tools-label" aria-hidden="true">Load book</span>
             </button>
           </nav>
         </div>
