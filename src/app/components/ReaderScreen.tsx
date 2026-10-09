@@ -99,6 +99,7 @@ const TAP_TOLERANCE = 10;
 const SNAP_THRESHOLD_RATIO = 0.06;
 const SNAP_THRESHOLD_PX = 32;
 const SNAP_ANIMATION_MS = 240;
+const WORD_ANIMATION_MS = SNAP_ANIMATION_MS * 2;
 const PORTION_NAV_ITEM_HEIGHT_PX = 4;
 const CHAPTER_TRACK_GAP_PX = 3;
 const NAVIGATOR_COVER_HEIGHT_PX = 48;
@@ -403,6 +404,14 @@ export function ReaderScreen({
     wordDragRef.current = null;
   }
 
+  function wordMotionOptions(rest = false, direction?: SnapDirection) {
+    return {
+      style: requestedSettings.wordAnimationStyle ?? 'cascade', stage: stageRef.current ?? undefined, rest, direction,
+      forwardDistance: Math.abs(paneLayout.forwardSnapOffset), backwardDistance: Math.abs(paneLayout.backwardSnapOffset),
+      isUpdatePending: () => dragAnimationFrameRef.current !== null
+    };
+  }
+
   useLayoutEffect(() => {
     if (isDragging) wordDragRef.current?.update(dragOffset);
   }, [dragOffset, isDragging]);
@@ -527,12 +536,13 @@ export function ReaderScreen({
   function animateBackToRest() {
     clearSnapTimeout();
     clearWordMotion();
-    const panes = [previousPaneRef.current, currentPaneRef.current, nextPaneRef.current]
-      .filter((pane): pane is HTMLDivElement => Boolean(pane));
-    if (wordDragRef.current && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      wordMotionRef.current = animatePortionWords(panes, -dragOffsetRef.current, SNAP_ANIMATION_MS, wordDragRef.current);
-    }
+    const drag = wordDragRef.current;
     clearWordDrag();
+    const panes = [currentPaneRef.current, dragOffsetRef.current < 0 ? nextPaneRef.current : previousPaneRef.current]
+      .filter((pane): pane is HTMLDivElement => Boolean(pane));
+    if (drag && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      wordMotionRef.current = animatePortionWords(panes, -dragOffsetRef.current, WORD_ANIMATION_MS, drag, wordMotionOptions(true));
+    }
     setWordTransition(Boolean(wordMotionRef.current));
     clearDragAnimationFrame();
     setTransitionEnabled(true);
@@ -570,15 +580,16 @@ export function ReaderScreen({
 
     clearSnapTimeout();
     clearWordMotion();
+    const drag = wordDragRef.current;
+    clearWordDrag();
     const targetOffset = direction === 'forward' ? paneLayout.forwardSnapOffset : paneLayout.backwardSnapOffset;
     const neighbor = direction === 'forward' ? nextPaneRef.current : previousPaneRef.current;
     if (requestedSettings.wordAnimation && !window.matchMedia('(prefers-reduced-motion: reduce)').matches
       && currentPaneRef.current && neighbor) {
       wordMotionRef.current = animatePortionWords(
-        [currentPaneRef.current, neighbor], targetOffset - dragOffsetRef.current, SNAP_ANIMATION_MS, wordDragRef.current
+        [currentPaneRef.current, neighbor], targetOffset - dragOffsetRef.current, WORD_ANIMATION_MS, drag, wordMotionOptions(false, direction)
       );
     }
-    clearWordDrag();
     setWordTransition(Boolean(wordMotionRef.current));
     if (wordMotionRef.current) {
       snapTimeoutRef.current = window.setTimeout(() => finishPortionTransition(direction), wordMotionRef.current.duration);
@@ -1643,7 +1654,7 @@ export function ReaderScreen({
       if (requestedSettings.wordAnimation && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
         wordDragRef.current = createWordDrag(
           [previousPaneRef.current, currentPaneRef.current, nextPaneRef.current]
-            .filter((pane): pane is HTMLDivElement => Boolean(pane))
+            .filter((pane): pane is HTMLDivElement => Boolean(pane)), wordMotionOptions()
         );
       }
       isDraggingRef.current = true;

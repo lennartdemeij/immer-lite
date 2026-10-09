@@ -3,50 +3,128 @@ export interface WordMotion {
   cancel: () => void;
 }
 
+interface WordPose { x: number; y: number; rotation: number; scale: number }
+interface WordGeometry { x: number; y: number; spin: number; priority: number }
+interface MotionOptions {
+  style?: 'cascade' | 'vortex';
+  stage?: HTMLElement;
+  forwardDistance?: number;
+  backwardDistance?: number;
+  rest?: boolean;
+  direction?: 'forward' | 'backward';
+  isUpdatePending?: () => boolean;
+}
+const identity: WordPose = { x: 0, y: 0, rotation: 0, scale: 1 };
+const mix = (from: number, to: number, progress: number) => from + (to - from) * progress;
+const rounded = (value: number) => Math.round(value * 100) / 100;
+function transform(pose: WordPose, full = false) {
+  const translation = `translate3d(${rounded(pose.x)}px, ${rounded(pose.y)}px, 0)`;
+  return full ? `${translation} rotate(${rounded(pose.rotation)}deg) scale(${rounded(pose.scale)})` : translation;
+}
+function geometry(word: HTMLElement, index: number, bounds: DOMRect): WordGeometry {
+  const rect = word.getBoundingClientRect();
+  const x = rect.left + rect.width / 2;
+  const center = bounds.left + bounds.width / 2;
+  return { x, y: rect.top + rect.height / 2,
+    spin: x === center ? index % 2 ? 90 : -90 : x < center ? -90 : 90,
+    priority: Math.min(1, Math.abs(x - center) / Math.max(1, Math.min(700, bounds.width) / 2)) };
+}
+function role(pane: HTMLElement) {
+  return pane.classList.contains('portion-pane-next') ? 'next'
+    : pane.classList.contains('portion-pane-previous') ? 'previous' : 'current';
+}
+
 export interface WordDrag {
   update: (offset: number) => void;
   offsetFor: (word: HTMLElement) => number;
   cancel: () => void;
+  poseFor: (word: HTMLElement) => WordPose | undefined;
+  geometryFor: (word: HTMLElement) => WordGeometry | undefined;
+  currentOffset: () => number;
 }
 
 // Keep a short pointer history so later words follow the same path slightly later.
 // No text measurements or React renders are needed for the trailing frames.
-export function createWordDrag(panes: HTMLElement[]): WordDrag | null {
-  const entries = panes.flatMap((pane) => {
+export function createWordDrag(panes: HTMLElement[], options: MotionOptions = {}): WordDrag | null {
+  const bounds = options.style === 'vortex' ? options.stage?.getBoundingClientRect() : undefined;
+  // Batch geometry reads before touching any styles; reuse them when releasing.
+  const groups = panes.map((pane) => {
     const words = Array.from(pane.querySelectorAll<HTMLElement>('.reader-word'));
     const stagger = Math.min(120, Math.max(0, words.length - 1) * 2);
-    return words.map((word, index) => ({ word, original: word.style.transform,
+    const entries = words.map((word, index) => ({ word, original: word.style.transform,
+      originalHint: word.style.willChange, lastTransform: '', promoted: false,
+      pose: { ...identity },
+      geometry: bounds ? geometry(word, index, bounds) : undefined,
       delay: words.length > 1 ? index / (words.length - 1) * stagger : 0 }));
+    if (bounds) {
+      entries.forEach((entry) => { entry.delay = entry.geometry!.priority * stagger; });
+      entries.sort((left, right) => left.delay - right.delay);
+    }
+    return { role: role(pane), entries };
   });
+  const entries = groups.flatMap((group) => group.entries);
   if (!entries.length) return null;
   const maxDelay = Math.max(...entries.map((entry) => entry.delay));
   const history = [{ at: performance.now(), offset: 0 }];
-  const offsets = new Map<HTMLElement, number>();
+  const poses = new Map<HTMLElement, WordPose>();
+  const geometries = new Map(entries.map((entry) => [entry.word, entry.geometry]));
   let currentOffset = 0;
   let frame: number | null = null;
 
   function render(now: number) {
     while (history.length > 1 && history[1].at <= now - maxDelay) history.shift();
-    entries.forEach(({ word, delay }) => {
-      const at = now - delay;
-      let offset = history[0].offset;
-      for (let index = 1; index < history.length; index += 1) {
-        const next = history[index];
-        const previous = history[index - 1];
-        if (next.at > at) {
-          const progress = Math.max(0, (at - previous.at) / (next.at - previous.at));
-          offset = previous.offset + (next.offset - previous.offset) * progress;
-          break;
+    groups.forEach((group) => {
+      if (group.role === 'next' && currentOffset >= 0 || group.role === 'previous' && currentOffset <= 0) return;
+      let cursor = history.length - 1;
+      group.entries.forEach((entry) => {
+        const { word, delay } = entry;
+        const at = now - delay;
+        while (cursor > 0 && history[cursor].at > at) cursor -= 1;
+        const previous = history[cursor];
+        const next = history[cursor + 1];
+        const offset = next ? mix(previous.offset, next.offset, Math.max(0, Math.min(1, (at - previous.at) / (next.at - previous.at)))) : previous.offset;
+        const pose = entry.pose;
+        pose.x = pose.rotation = 0;
+        pose.scale = 1;
+        pose.y = offset - currentOffset;
+        if (bounds && entry.geometry) {
+          const forward = currentOffset < 0;
+          const distance = (forward ? options.forwardDistance : options.backwardDistance) || bounds.height;
+          const globalProgress = Math.min(1, Math.max(0, (forward ? -offset : offset) / distance));
+          const priorityDelay = entry.geometry.priority * 0.6;
+          const progress = Math.max(0, (globalProgress - priorityDelay) / (1 - priorityDelay));
+          const lift = progress * (2 - progress);
+          const center = bounds.left + bounds.width / 2;
+          const portal = group.role === 'current'
+            ? forward ? bounds.top - 32 : bounds.bottom + 32
+            : forward ? bounds.bottom + 32 : bounds.top - 32;
+          const g = entry.geometry;
+          const amount = group.role === 'current' ? progress : 1 - progress;
+          pose.x = (center - g.x) * amount;
+          pose.y = group.role === 'current' ? mix(g.y, portal, lift) - g.y - currentOffset
+            : mix(portal, g.y + (forward ? -distance : distance), lift) - g.y - currentOffset;
+          pose.rotation = g.spin * (group.role === 'current' ? lift : 1 - lift) * (forward ? 1 : -1);
+          pose.scale = 1 - amount * 0.8;
         }
-        offset = next.offset;
-      }
-      const translation = offset - currentOffset;
-      offsets.set(word, translation);
-      word.style.transform = `translateY(${translation}px)`;
+        poses.set(word, pose);
+        if (!entry.promoted) { word.style.willChange = 'transform'; entry.promoted = true; }
+        const value = transform(pose, Boolean(bounds));
+        if (value !== entry.lastTransform) { word.style.transform = value; entry.lastTransform = value; }
+      });
     });
     if (now < history[history.length - 1].at + maxDelay) {
-      frame = requestAnimationFrame((time) => { frame = null; render(time); });
+      scheduleTail();
     }
+  }
+
+  function scheduleTail() {
+    frame = requestAnimationFrame((time) => {
+      frame = null;
+      // The reader already has an update queued for this frame. Let it render
+      // once, instead of rewriting every word before and after the React commit.
+      if (options.isUpdatePending?.()) scheduleTail();
+      else render(time);
+    });
   }
 
   return {
@@ -62,34 +140,73 @@ export function createWordDrag(panes: HTMLElement[]): WordDrag | null {
       else history.push({ at, offset });
       render(at);
     },
-    offsetFor: (word) => offsets.get(word) ?? 0,
+    offsetFor: (word) => poses.get(word)?.y ?? 0,
+    poseFor: (word) => poses.get(word),
+    geometryFor: (word) => geometries.get(word),
+    currentOffset: () => currentOffset,
     cancel() {
       if (frame !== null) cancelAnimationFrame(frame);
       frame = null;
-      entries.forEach(({ word, original }) => { word.style.transform = original; });
+      entries.forEach(({ word, original, originalHint }) => {
+        word.style.transform = original;
+        word.style.willChange = originalHint;
+      });
     }
   };
 }
 
 // Only the visible portion and its neighbour participate; pagination stays untouched.
 export function animatePortionWords(
-  panes: HTMLElement[], displacement: number, duration: number, drag?: WordDrag | null
+  panes: HTMLElement[], displacement: number, duration: number, drag?: WordDrag | null, options: MotionOptions = {}
 ): WordMotion | null {
   const words = panes.map((pane) => Array.from(pane.querySelectorAll<HTMLElement>('.reader-word')));
   if (!words.some((group) => group.length) || typeof HTMLElement.prototype.animate !== 'function') return null;
 
-  const stagger = Math.min(120, Math.max(...words.map((group) => Math.max(0, group.length - 1))) * 2);
+  const stagger = Math.min(duration / 2, Math.max(...words.map((group) => Math.max(0, group.length - 1))) * duration / 120);
   const animations: Animation[] = [];
-  const frames = [{ transform: `translateY(${-displacement}px)` }, { transform: 'translateY(0)' }];
+  const hints = new Map<HTMLElement, string>();
+  const frames = [{ transform: transform({ ...identity, y: -displacement }) }, { transform: transform(identity) }];
+  const bounds = options.style === 'vortex' ? options.stage?.getBoundingClientRect() : undefined;
+  const geometries = bounds ? words.map((group) => group.map((word, index) => drag?.geometryFor(word) ?? geometry(word, index, bounds))) : [];
+  const cancel = () => {
+    animations.forEach((animation) => animation.cancel());
+    hints.forEach((hint, word) => { word.style.willChange = hint; });
+  };
   try {
     panes.forEach((pane, paneIndex) => {
       const group = words[paneIndex];
       group.forEach((word, index) => {
-        animations.push(word.animate([
-          { transform: `translateY(${-displacement + (drag?.offsetFor(word) ?? 0)}px)` }, frames[1]
-        ], {
-          duration, delay: group.length > 1 ? index / (group.length - 1) * stagger : 0,
-          easing: 'cubic-bezier(0.22, 1, 0.36, 1)', fill: 'backwards'
+        const dragPose = drag?.poseFor(word);
+        const pose = dragPose ?? identity;
+        let start = { ...pose, y: pose.y - displacement };
+        let end = identity;
+        if (bounds && !options.rest) {
+          const g = geometries[paneIndex][index];
+          const forward = options.direction ? options.direction === 'forward' : displacement < 0;
+          const portal = role(pane) === 'current'
+            ? forward ? bounds.top - 32 : bounds.bottom + 32
+            : forward ? bounds.bottom + 32 : bounds.top - 32;
+          const funnel: WordPose = { x: bounds.left + bounds.width / 2 - g.x,
+            y: portal - g.y - displacement - (drag?.currentOffset() ?? 0),
+            rotation: g.spin * (forward ? 1 : -1), scale: 0.2 };
+          if (role(pane) === 'current') end = funnel;
+          else if (!dragPose) start = funnel;
+        }
+        hints.set(word, word.style.willChange);
+        word.style.willChange = 'transform';
+        const keyframes: Keyframe[] = [{ transform: transform(start, Boolean(bounds)), offset: 0 }];
+        if (bounds && !options.rest) {
+          const lift = 0.85 - geometries[paneIndex][index].priority * 0.55;
+          keyframes.push({ offset: 0.5, transform: transform({
+            x: mix(start.x, end.x, 0.55), y: mix(start.y, end.y, lift),
+            rotation: mix(start.rotation, end.rotation, lift), scale: mix(start.scale, end.scale, 0.5)
+          }, true) });
+        }
+        keyframes.push({ transform: transform(end, Boolean(bounds)), offset: 1 });
+        animations.push(word.animate(keyframes, {
+          duration, delay: bounds ? geometries[paneIndex][index].priority * stagger
+            : group.length > 1 ? index / (group.length - 1) * stagger : 0,
+          easing: bounds ? 'cubic-bezier(0.4, 0, 0.2, 1)' : 'cubic-bezier(0.22, 1, 0.36, 1)', fill: 'both'
         }));
       });
       pane.querySelectorAll<HTMLElement>('.image-block, .list-label, .scene-break, .annotation-live-overlay')
@@ -98,8 +215,8 @@ export function animatePortionWords(
         })));
     });
   } catch {
-    animations.forEach((animation) => animation.cancel());
+    cancel();
     return null;
   }
-  return { duration: duration + stagger, cancel: () => animations.forEach((animation) => animation.cancel()) };
+  return { duration: duration + stagger, cancel };
 }

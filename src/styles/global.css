@@ -1734,6 +1734,14 @@ button {
 }
 
 .settings-checkbox input { width: 20px; height: 20px; accent-color: var(--accent); }
+.settings-checkbox select {
+  padding: 7px 10px;
+  border: 1px solid var(--stroke);
+  border-radius: 8px;
+  color: var(--text);
+  background: var(--surface);
+  font: inherit;
+}
 
 .settings-upload-button {
   width: 100%;
