@@ -1,15 +1,51 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { animatePortionWords } from './wordMotion';
+import { animatePortionWords, createWordDrag } from './wordMotion';
 
 const originalAnimate = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'animate');
 beforeEach(() => Object.defineProperty(HTMLElement.prototype, 'animate', { configurable: true, writable: true, value: vi.fn() }));
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   if (originalAnimate) Object.defineProperty(HTMLElement.prototype, 'animate', originalAnimate);
   else Reflect.deleteProperty(HTMLElement.prototype, 'animate');
 });
 
 describe('portion word motion', () => {
+  it('trails the pointer per word, carries the displayed positions into the snap, and cleans up', () => {
+    let now = 0;
+    let nextFrame = 0;
+    const callbacks = new Map<number, FrameRequestCallback>();
+    vi.spyOn(performance, 'now').mockImplementation(() => now);
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+      callbacks.set(++nextFrame, callback);
+      return nextFrame;
+    });
+    vi.stubGlobal('cancelAnimationFrame', (id: number) => callbacks.delete(id));
+    const pane = document.createElement('div');
+    pane.innerHTML = '<span class="reader-word">word</span>'.repeat(61);
+    const words = pane.querySelectorAll<HTMLElement>('.reader-word');
+    const drag = createWordDrag([pane])!;
+    now = 20;
+    drag.update(-60);
+    expect(drag.offsetFor(words[0])).toBe(0);
+    expect(drag.offsetFor(words[60])).toBe(60);
+    const animate = vi.spyOn(HTMLElement.prototype, 'animate').mockReturnValue({ cancel: vi.fn() } as unknown as Animation);
+    animatePortionWords([pane], -400, 240, drag);
+    expect(animate.mock.calls[60][0]).toEqual([{ transform: 'translateY(460px)' }, { transform: 'translateY(0)' }]);
+    now = 140;
+    const pending = Array.from(callbacks.values());
+    callbacks.clear();
+    pending.forEach((callback) => callback(now));
+    expect(drag.offsetFor(words[60])).toBe(0);
+    expect(callbacks.size).toBe(0);
+    now = 160;
+    drag.update(40);
+    expect(drag.offsetFor(words[60])).toBe(-100);
+    drag.cancel();
+    expect(callbacks.size).toBe(0);
+    expect(Array.from(words).every((word) => word.style.transform === '')).toBe(true);
+  });
+
   it('bounds the stagger for long portions, reverses travel, and cancels all animations', () => {
     const cancel = vi.fn();
     const animate = vi.fn<HTMLElement['animate']>(() => ({ cancel } as unknown as Animation));

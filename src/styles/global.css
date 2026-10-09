@@ -1116,10 +1116,8 @@ button {
   transition: transform 240ms ease-out, opacity 240ms linear;
 }
 
-.reader-stage.word-transition.snapping-forward :is(.portion-pane-current, .portion-pane-next),
-.reader-stage.word-transition.snapping-backward :is(.portion-pane-current, .portion-pane-previous) {
-  transition: none;
-  opacity: 1 !important;
+.reader-stage.word-transition .portion-pane {
+  transition: opacity var(--word-transition-duration, 360ms) linear;
   pointer-events: none;
 }
 
