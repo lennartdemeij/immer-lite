@@ -887,6 +887,9 @@ export function ReaderScreen({
       selectionFinalizeTimeoutRef.current = window.setTimeout(() => {
         const nextDraft = readSelectionDraftFromDom();
         if (!nextDraft) {
+          setSelectionEnabled(false);
+          setSelectionDraft(null);
+          clearDomSelection();
           clearSelectionFinalizeTimeout();
           return;
         }
