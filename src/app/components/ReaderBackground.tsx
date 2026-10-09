@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef } from 'react';
 
 const DEPTHS = [0.025, 0.065, 0.14];
 const TRAIL = [8, 22, 48];
+const TRAIL_DURATION = [1400, 1700, 2000];
 const tileOffset = (offset: number) => ((offset % 240) + 240) % 240 - 240;
 const dragDistance = (offset: number) => Math.max(-2000, Math.min(2000, offset));
 
@@ -51,12 +52,14 @@ export function ReaderBackground({ portionIndex, paginationPending, dragOffset, 
       const targetDrag = dragDistance(dragOffset) * DEPTHS[index];
       let target = bases.current[index] + targetDrag;
       let duration = transitionEnabled ? 240 : 0;
+      let easing = 'ease-out';
       if (settled || changed) {
         target = bases.current[index] + direction * TRAIL[index];
         bases.current[index] = target;
-        duration = 900;
+        duration = TRAIL_DURATION[index];
+        easing = 'cubic-bezier(0.22, 1, 0.36, 1)';
       } else if (!starting && !isDragging && !transitionEnabled) {
-        return; // Keep the short tail running after the text has settled.
+        return; // Keep the tail running after the text has settled.
       }
 
       animations.current[index]?.cancel();
@@ -65,7 +68,7 @@ export function ReaderBackground({ portionIndex, paginationPending, dragOffset, 
       animations.current[index] = duration ? layer.animate([
         { transform: `translateY(${current}px)` },
         { transform: `translateY(${target}px)` }
-      ], { duration, easing: 'ease-out' }) : null;
+      ], { duration, easing }) : null;
     });
   }, [portionIndex, paginationPending, dragOffset, isDragging, snapDirection, transitionEnabled]);
 
