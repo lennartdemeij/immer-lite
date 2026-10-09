@@ -11,6 +11,54 @@ afterEach(() => {
 });
 
 describe('portion word motion', () => {
+  it.each(['forward', 'backward'] as const)('grows the %s portion from the same interaction point at a slower pace', (direction) => {
+    const stage = document.createElement('main');
+    vi.spyOn(stage, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 100, 800, 600));
+    const forward = direction === 'forward';
+    const neighbor = document.createElement('div');
+    neighbor.className = forward ? 'portion-pane-next' : 'portion-pane-previous';
+    neighbor.innerHTML = '<span class="reader-word">first</span><span class="reader-word">second</span>';
+    const displacement = forward ? -600 : 600;
+    const origin = { x: 250, y: 430 };
+    const rects = [new DOMRect(100, forward ? 900 : -300, 80, 20), new DOMRect(500, forward ? 1100 : -100, 100, 20)];
+    Array.from(neighbor.children).forEach((word, index) => vi.spyOn(word, 'getBoundingClientRect').mockReturnValue(rects[index]));
+    const animate = vi.spyOn(HTMLElement.prototype, 'animate').mockReturnValue({ cancel: vi.fn() } as unknown as Animation);
+    animatePortionWords([neighbor], displacement, 480, null, { style: 'explosion', stage, origin, direction });
+    animate.mock.calls.forEach(([rawFrames, rawTiming], index) => {
+      const frames = rawFrames as Keyframe[];
+      const start = String(frames[0].transform);
+      const translation = start.match(/translate3d\(([-\d.]+)px, ([-\d.]+)px/)!;
+      const rect = rects[index];
+      expect(rect.left + rect.width / 2 + Number(translation[1])).toBe(origin.x);
+      expect(rect.top + rect.height / 2 + displacement + Number(translation[2])).toBe(origin.y);
+      expect(Number(start.match(/scale\(([\d.]+)\)/)![1])).toBeLessThan(0.1);
+      expect((rawTiming as KeyframeAnimationOptions).duration).toBeGreaterThanOrEqual(960);
+      expect(frames.at(-1)!.transform).toBe('translate3d(0px, 0px, 0) rotate(0deg) scale(1)');
+    });
+  });
+
+  it('keeps the incoming words at the touch point before they grow during a drag', () => {
+    let now = 0;
+    vi.spyOn(performance, 'now').mockImplementation(() => now);
+    vi.stubGlobal('requestAnimationFrame', () => 1);
+    vi.stubGlobal('cancelAnimationFrame', () => {});
+    const stage = document.createElement('main');
+    vi.spyOn(stage, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 100, 800, 600));
+    const neighbor = document.createElement('div');
+    neighbor.className = 'portion-pane-next';
+    neighbor.innerHTML = '<span class="reader-word">word</span>';
+    const word = neighbor.firstElementChild as HTMLElement;
+    vi.spyOn(word, 'getBoundingClientRect').mockReturnValue(new DOMRect(100, 900, 80, 20));
+    const drag = createWordDrag([neighbor], { style: 'explosion', stage, origin: { x: 250, y: 430 }, forwardDistance: 600 })!;
+    now = 50;
+    drag.update(-1);
+    const start = drag.poseFor(word)!;
+    expect(140 + start.x).toBeCloseTo(250, 0);
+    expect(910 - 1 + start.y).toBeCloseTo(430, 0);
+    expect(start.scale).toBeLessThan(0.1);
+    drag.cancel();
+  });
+
   it('explodes away from the touch point, including the word directly under it', () => {
     const stage = document.createElement('main');
     vi.spyOn(stage, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 100, 800, 600));

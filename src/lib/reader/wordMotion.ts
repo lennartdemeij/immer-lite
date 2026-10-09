@@ -4,7 +4,7 @@ export interface WordMotion {
 }
 
 interface WordPose { x: number; y: number; rotation: number; scale: number }
-interface WordGeometry { x: number; y: number; spin: number; priority: number; burst?: WordPose }
+interface WordGeometry { x: number; y: number; spin: number; priority: number; burst?: WordPose; growth?: WordPose }
 interface MotionOptions {
   style?: 'cascade' | 'vortex' | 'explosion';
   stage?: HTMLElement;
@@ -31,7 +31,11 @@ function geometry(word: HTMLElement, index: number, bounds: DOMRect, origin?: Mo
     spin: x === center ? index % 2 ? 90 : -90 : x < center ? -90 : 90,
     priority: origin ? Math.min(1, Math.hypot(x - origin.x, y + restingOffset - origin.y) / Math.max(1, Math.hypot(bounds.width, bounds.height)))
       : Math.min(1, Math.abs(x - center) / Math.max(1, Math.min(700, bounds.width) / 2)) };
-  if (origin) result.burst = explosion(result, bounds, origin, restingOffset);
+  if (origin) {
+    result.burst = explosion(result, bounds, origin, restingOffset);
+    result.growth = { x: origin.x - x, y: origin.y - y - restingOffset,
+      rotation: -result.burst.rotation * 0.35, scale: 0.04 };
+  }
   return result;
 }
 function role(pane: HTMLElement) {
@@ -128,7 +132,7 @@ export function createWordDrag(panes: HTMLElement[], options: MotionOptions = {}
           pose.scale = 1 - amount * 0.8;
           if (origin) {
             const restingOffset = group.role === 'current' ? 0 : forward ? -distance : distance;
-            const burst = g.burst!;
+            const burst = group.role === 'current' ? g.burst! : g.growth!;
             const spread = group.role === 'current' ? lift : 1 - lift;
             pose.x = burst.x * spread;
             pose.y = restingOffset + burst.y * spread - currentOffset;
@@ -192,6 +196,7 @@ export function animatePortionWords(
   const words = panes.map((pane) => Array.from(pane.querySelectorAll<HTMLElement>('.reader-word')));
   if (!words.some((group) => group.length) || typeof HTMLElement.prototype.animate !== 'function') return null;
 
+  if (options.style === 'explosion') duration *= 2;
   const stagger = Math.min(duration / 2, Math.max(...words.map((group) => Math.max(0, group.length - 1))) * duration / 120);
   const animations: Animation[] = [];
   const hints = new Map<HTMLElement, string>();
@@ -229,7 +234,7 @@ export function animatePortionWords(
             const outgoing = role(pane) === 'current';
             const burst = g.burst!;
             if (outgoing) end = { ...burst, y: burst.y - totalOffset };
-            else if (!dragPose) start = burst;
+            else if (!dragPose) start = g.growth!;
           }
         }
         hints.set(word, word.style.willChange);
@@ -246,7 +251,8 @@ export function animatePortionWords(
         animations.push(word.animate(keyframes, {
           duration, delay: bounds ? geometries[paneIndex][index].priority * stagger
             : group.length > 1 ? index / (group.length - 1) * stagger : 0,
-          easing: bounds && !origin ? 'cubic-bezier(0.4, 0, 0.2, 1)' : 'cubic-bezier(0.22, 1, 0.36, 1)', fill: 'both'
+          easing: bounds && (!origin || role(pane) === 'current')
+            ? 'cubic-bezier(0.4, 0, 0.2, 1)' : 'cubic-bezier(0.22, 1, 0.36, 1)', fill: 'both'
         }));
       });
       pane.querySelectorAll<HTMLElement>('.image-block, .list-label, .scene-break, .annotation-live-overlay')
