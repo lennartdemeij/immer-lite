@@ -11,6 +11,71 @@ afterEach(() => {
 });
 
 describe('portion word motion', () => {
+  it('explodes away from the touch point, including the word directly under it', () => {
+    const stage = document.createElement('main');
+    vi.spyOn(stage, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 100, 800, 600));
+    const current = document.createElement('div');
+    current.className = 'portion-pane-current';
+    current.innerHTML = '<span class="reader-word">left</span><span class="reader-word">touch</span><span class="reader-word">right</span>';
+    current.querySelectorAll<HTMLElement>('.reader-word').forEach((word, index) => {
+      vi.spyOn(word, 'getBoundingClientRect').mockReturnValue(new DOMRect(100 + index * 200, 300, 80, 20));
+    });
+    const animate = vi.spyOn(HTMLElement.prototype, 'animate').mockReturnValue({ cancel: vi.fn() } as unknown as Animation);
+    const options = { style: 'explosion' as const, stage, origin: { x: 340, y: 310 } };
+    const translation = (index: number) => {
+      const frames = animate.mock.calls[index][0] as Keyframe[];
+      return String(frames[frames.length - 1].transform).match(/translate3d\(([-\d.]+)px, ([-\d.]+)px/)!;
+    };
+    animatePortionWords([current], -600, 480, null, options);
+    expect(Number(translation(0)[1])).toBeLessThan(-800);
+    expect(Number(translation(2)[1])).toBeGreaterThan(800);
+    expect(animate.mock.calls.every(([frames]) => !JSON.stringify(frames).match(/NaN|Infinity/))).toBe(true);
+    expect((animate.mock.calls[1][1] as KeyframeAnimationOptions).delay).toBe(0);
+    // Moving the touch point across the same words reverses their radial path.
+    animate.mockClear();
+    animatePortionWords([current], -600, 480, null, { ...options, origin: { x: 40, y: 200 } });
+    expect(Number(translation(0)[1])).toBeGreaterThan(0);
+    expect(Number(translation(0)[2]) - 600).toBeGreaterThan(0);
+  });
+
+  it('keeps the explosion continuous from drag into snap, and restores cancelled drags', () => {
+    let now = 0;
+    vi.spyOn(performance, 'now').mockImplementation(() => now);
+    vi.stubGlobal('requestAnimationFrame', () => 1);
+    vi.stubGlobal('cancelAnimationFrame', () => {});
+    const stage = document.createElement('main');
+    vi.spyOn(stage, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 100, 800, 600));
+    const panes = ['current', 'next'].map((role, index) => {
+      const pane = document.createElement('div');
+      pane.className = `portion-pane-${role}`;
+      pane.innerHTML = '<span class="reader-word">word</span>';
+      vi.spyOn(pane.firstElementChild!, 'getBoundingClientRect').mockReturnValue(new DOMRect(100, 300 + index * 600, 80, 20));
+      return pane;
+    });
+    const options = { style: 'explosion' as const, stage, origin: { x: 400, y: 400 }, forwardDistance: 600 };
+    const drag = createWordDrag(panes, options)!;
+    now = 50;
+    drag.update(-160);
+    const word = panes[0].firstElementChild as HTMLElement;
+    const pose = { ...drag.poseFor(word)! };
+    expect(pose.x).toBeLessThan(0);
+    expect(pose.y - 160).toBeLessThan(0);
+    expect(pose.rotation).not.toBe(0);
+    drag.cancel();
+    const animate = vi.spyOn(HTMLElement.prototype, 'animate').mockReturnValue({ cancel: vi.fn() } as unknown as Animation);
+    const motion = animatePortionWords(panes, -440, 480, drag, options)!;
+    const frames = animate.mock.calls[0][0] as Keyframe[];
+    const round = (value: number) => Math.round(value * 100) / 100;
+    expect(frames[0].transform).toContain(`translate3d(${round(pose.x)}px, ${round(pose.y + 440)}px`);
+    expect((animate.mock.calls[1][0] as Keyframe[]).at(-1)!.transform).toBe('translate3d(0px, 0px, 0) rotate(0deg) scale(1)');
+    motion.cancel();
+    expect(word.style.transform).toBe('');
+    expect(word.style.willChange).toBe('');
+    animate.mockClear();
+    animatePortionWords([panes[0]], 160, 480, drag, { ...options, rest: true });
+    expect((animate.mock.calls[0][0] as Keyframe[]).at(-1)!.transform).toBe('translate3d(0px, 0px, 0) rotate(0deg) scale(1)');
+  });
+
   it('lifts and tilts the centre of a line before its outside words, during drag and snap', () => {
     let now = 0;
     vi.spyOn(performance, 'now').mockImplementation(() => now);

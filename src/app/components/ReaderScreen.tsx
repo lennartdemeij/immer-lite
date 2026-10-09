@@ -331,6 +331,7 @@ export function ReaderScreen({
   const [wordTransition, setWordTransition] = useState(false);
   const wordMotionRef = useRef<WordMotion | null>(null);
   const wordDragRef = useRef<WordDrag | null>(null);
+  const wordOriginRef = useRef<{ x: number; y: number }>();
   const [progressTrackHeight, setProgressTrackHeight] = useState(0);
   const [progressDragOffset, setProgressDragOffset] = useState(0);
   const [progressDragging, setProgressDragging] = useState(false);
@@ -407,6 +408,7 @@ export function ReaderScreen({
   function wordMotionOptions(rest = false, direction?: SnapDirection) {
     return {
       style: requestedSettings.wordAnimationStyle ?? 'cascade', stage: stageRef.current ?? undefined, rest, direction,
+      origin: wordOriginRef.current,
       forwardDistance: Math.abs(paneLayout.forwardSnapOffset), backwardDistance: Math.abs(paneLayout.backwardSnapOffset),
       isUpdatePending: () => dragAnimationFrameRef.current !== null
     };
@@ -629,6 +631,7 @@ export function ReaderScreen({
       ) {
         event.preventDefault();
         if (nextPortion) {
+          wordOriginRef.current = undefined;
           animateToNeighbor('forward');
         }
       }
@@ -636,6 +639,7 @@ export function ReaderScreen({
       if (event.key === 'ArrowUp' || event.key === 'PageUp') {
         event.preventDefault();
         if (previousPortion) {
+          wordOriginRef.current = undefined;
           animateToNeighbor('backward');
         }
       }
@@ -643,7 +647,7 @@ export function ReaderScreen({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [readAloud.isPlaying, isDragging, nextPortion, onNext, onPrevious, previousPortion, snapDirection]);
+  }, [readAloud.isPlaying, isDragging, nextPortion, onNext, onPrevious, previousPortion, snapDirection, requestedSettings.wordAnimation, requestedSettings.wordAnimationStyle]);
 
   useEffect(() => {
     const stage = stageRef.current;
@@ -671,12 +675,13 @@ export function ReaderScreen({
       gesture.blockedUntil = now + 400;
       if (direction === 'forward' ? nextPortion : previousPortion) {
         triggerReaderHaptic();
+        wordOriginRef.current = { x: event.clientX, y: event.clientY };
         animateToNeighbor(direction);
       }
     };
     stage.addEventListener('wheel', handleWheel, { passive: false });
     return () => stage.removeEventListener('wheel', handleWheel);
-  }, [readAloud.isPlaying, isDragging, snapDirection, selectionEnabled, selectionDraft, activeAnnotation, nextPortion, previousPortion, onNext, onPrevious]);
+  }, [readAloud.isPlaying, isDragging, snapDirection, selectionEnabled, selectionDraft, activeAnnotation, nextPortion, previousPortion, onNext, onPrevious, requestedSettings.wordAnimation, requestedSettings.wordAnimationStyle]);
 
   useEffect(() => {
     if (!readAloud.isPlaying) return;
@@ -1574,6 +1579,7 @@ export function ReaderScreen({
       moved: false,
       startedOnInteractive: Boolean(interactiveTarget)
     };
+    wordOriginRef.current = { x: event.clientX, y: event.clientY };
     stageElementRef.current = event.currentTarget;
     longPressTriggeredRef.current = false;
     longPressEligibleRef.current = withinCurrentText && !interactiveTarget;

@@ -95,9 +95,10 @@ export function SettingsPanel({
             <label className="settings-checkbox">
               <span>Animation style</span>
               <select value={settings.wordAnimationStyle ?? 'cascade'}
-                onChange={(event) => onChange({ ...settings, wordAnimationStyle: event.target.value as 'cascade' | 'vortex' })}>
+                onChange={(event) => onChange({ ...settings, wordAnimationStyle: event.target.value as 'cascade' | 'vortex' | 'explosion' })}>
                 <option value="cascade">Cascade</option>
                 <option value="vortex">Vortex</option>
+                <option value="explosion">Explosion</option>
               </select>
             </label>
           ) : null}
