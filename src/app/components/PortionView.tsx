@@ -24,6 +24,19 @@ interface FragmentSegment {
   end?: number;
 }
 
+function renderWords(segment: FragmentSegment) {
+  return Array.from(segment.text.matchAll(/\s+|\S+/gu), (match) => {
+    const start = segment.start === undefined ? undefined : segment.start + match.index;
+    const end = start === undefined ? undefined : Math.min(start + match[0].length, segment.end ?? Infinity);
+    return (
+      <span key={match.index} className={/\S/u.test(match[0]) ? 'reader-word' : undefined}
+        data-block-start={start} data-block-end={end}>
+        {match[0]}
+      </span>
+    );
+  });
+}
+
 function splitFragmentByAnnotations(
   fragment: RenderFragment,
   annotations: TextAnnotation[]
@@ -136,7 +149,7 @@ const TextSlice = memo(function TextSlice({
                           : undefined
                       }
                     >
-                      {segment.text}
+                      {settings.wordAnimation ? renderWords(segment) : segment.text}
                     </span>
                   ))}
                 </span>

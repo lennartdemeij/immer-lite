@@ -10,6 +10,7 @@ export interface ReaderSettings {
   hyphenation?: boolean;
   hyphenationLanguage?: string;
   backgroundAnimation?: boolean;
+  wordAnimation?: boolean;
 }
 
 export interface ViewportMetrics {

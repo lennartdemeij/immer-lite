@@ -87,6 +87,14 @@ export function SettingsPanel({
 
         <div className="settings-group">
           <label className="settings-checkbox">
+            <span>Word animation</span>
+            <input type="checkbox" checked={settings.wordAnimation ?? false}
+              onChange={(event) => onChange({ ...settings, wordAnimation: event.target.checked })} />
+          </label>
+        </div>
+
+        <div className="settings-group">
+          <label className="settings-checkbox">
             <span>Background animation</span>
             <input type="checkbox" checked={settings.backgroundAnimation ?? false}
               onChange={(event) => onChange({ ...settings, backgroundAnimation: event.target.checked })} />

@@ -30,6 +30,7 @@ import {
 } from '../../lib/annotations/domain';
 import { createAnnotationRange, readAnnotationSelection, readTouchWord } from '../../lib/annotations/domSelection';
 import { getAnnotationPortionIndexes } from '../../lib/annotations/navigation';
+import { animatePortionWords, type WordMotion } from '../../lib/reader/wordMotion';
 
 interface ReaderScreenProps {
   book: CanonicalBook;
@@ -326,6 +327,8 @@ export function ReaderScreen({
   const [isDragging, setIsDragging] = useState(false);
   const [snapDirection, setSnapDirection] = useState<SnapDirection | null>(null);
   const [transitionEnabled, setTransitionEnabled] = useState(false);
+  const [wordTransition, setWordTransition] = useState(false);
+  const wordMotionRef = useRef<WordMotion | null>(null);
   const [progressTrackHeight, setProgressTrackHeight] = useState(0);
   const [progressDragOffset, setProgressDragOffset] = useState(0);
   const [progressDragging, setProgressDragging] = useState(false);
@@ -387,6 +390,11 @@ export function ReaderScreen({
       window.clearTimeout(snapTimeoutRef.current);
       snapTimeoutRef.current = null;
     }
+  }
+
+  function clearWordMotion() {
+    wordMotionRef.current?.cancel();
+    wordMotionRef.current = null;
   }
 
   function clearLongPressTimeout() {
@@ -508,6 +516,8 @@ export function ReaderScreen({
 
   function animateBackToRest() {
     clearSnapTimeout();
+    clearWordMotion();
+    setWordTransition(false);
     clearDragAnimationFrame();
     setTransitionEnabled(true);
     setSnapDirection(null);
@@ -536,14 +546,26 @@ export function ReaderScreen({
       return;
     }
 
+    clearSnapTimeout();
+    clearWordMotion();
+    const targetOffset = direction === 'forward' ? paneLayout.forwardSnapOffset : paneLayout.backwardSnapOffset;
+    const neighbor = direction === 'forward' ? nextPaneRef.current : previousPaneRef.current;
+    if (requestedSettings.wordAnimation && !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      && currentPaneRef.current && neighbor) {
+      wordMotionRef.current = animatePortionWords(
+        [currentPaneRef.current, neighbor], targetOffset - dragOffsetRef.current, SNAP_ANIMATION_MS
+      );
+    }
+    setWordTransition(Boolean(wordMotionRef.current));
+    if (wordMotionRef.current) {
+      snapTimeoutRef.current = window.setTimeout(() => finishPortionTransition(direction), wordMotionRef.current.duration);
+    }
     setTransitionEnabled(true);
     setIsDragging(false);
     isDraggingRef.current = false;
     setSnapDirection(direction);
     clearDragAnimationFrame();
-    flushDragOffset(
-      direction === 'forward' ? paneLayout.forwardSnapOffset : paneLayout.backwardSnapOffset
-    );
+    flushDragOffset(targetOffset);
   }
 
   function navigateByTap(clientY: number) {
@@ -625,6 +647,8 @@ export function ReaderScreen({
   useEffect(() => {
     if (!readAloud.isPlaying) return;
     clearSnapTimeout();
+    clearWordMotion();
+    setWordTransition(false);
     clearDragAnimationFrame();
     clearLongPressTimeout();
     pointerState.current = null;
@@ -644,6 +668,7 @@ export function ReaderScreen({
   useEffect(() => {
     return () => {
       clearSnapTimeout();
+      clearWordMotion();
       clearDragAnimationFrame();
       clearLongPressTimeout();
       clearSelectionFinalizeTimeout();
@@ -779,6 +804,9 @@ export function ReaderScreen({
       return;
     }
 
+    clearSnapTimeout();
+    clearWordMotion();
+    setWordTransition(false);
     setTransitionEnabled(false);
     flushDragOffset(0);
     setIsDragging(false);
@@ -790,6 +818,17 @@ export function ReaderScreen({
     clearSelectionFinalizeTimeout();
     clearDomSelection();
   }, [portion]);
+
+  useEffect(() => {
+    if (!wordTransition || !snapDirection) return;
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const finishIfReduced = () => {
+      if (reducedMotion.matches) finishPortionTransition(snapDirection);
+    };
+    reducedMotion.addEventListener('change', finishIfReduced);
+    finishIfReduced();
+    return () => reducedMotion.removeEventListener('change', finishIfReduced);
+  }, [wordTransition, snapDirection]);
 
   useEffect(() => {
     if (!selectionEnabled || touchSelection) {
@@ -1637,7 +1676,7 @@ export function ReaderScreen({
   }
 
   function handleTrackTransitionEnd(event: React.TransitionEvent<HTMLDivElement>) {
-    if (readAloud.isPlaying) return;
+    if (readAloud.isPlaying || wordMotionRef.current) return;
     if (
       event.target !== currentPaneRef.current ||
       event.propertyName !== 'transform'
@@ -1654,7 +1693,13 @@ export function ReaderScreen({
       return;
     }
 
-    const direction = snapDirection;
+    finishPortionTransition(snapDirection);
+  }
+
+  function finishPortionTransition(direction: SnapDirection) {
+    clearSnapTimeout();
+    clearWordMotion();
+    setWordTransition(false);
     if (settleHapticPendingRef.current) {
       settleHapticPendingRef.current = false;
       triggerReaderHaptic();
@@ -1883,7 +1928,7 @@ export function ReaderScreen({
         ref={stageRef}
         className={`reader-stage ${isDragging ? 'dragging' : ''} ${
           snapDirection ? `snapping-${snapDirection}` : ''
-        } ${transitionEnabled ? 'transitioning' : ''} ${
+        } ${transitionEnabled ? 'transitioning' : ''} ${wordTransition ? 'word-transition' : ''} ${
           navigatorExpanded ? 'navigator-dragging' : ''
         }`}
         style={{

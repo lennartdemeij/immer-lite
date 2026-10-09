@@ -110,7 +110,7 @@ export function App() {
     hyphenation: settings.hyphenation ?? false
   }), [settings.fontSize, settings.lineHeight, settings.horizontalPadding, settings.hyphenation]);
   const [renderedSettings, setRenderedSettings] = useState(settings);
-  const displaySettings = useMemo(() => ({ ...renderedSettings, theme: settings.theme }), [renderedSettings, settings.theme]);
+  const displaySettings = useMemo(() => ({ ...renderedSettings, theme: settings.theme, wordAnimation: settings.wordAnimation ?? false }), [renderedSettings, settings.theme, settings.wordAnimation]);
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(() => getDefaultBookCandidates().length > 0);
   const [repaginating, setRepaginating] = useState(false);
