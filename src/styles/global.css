@@ -1,3 +1,19 @@
+@font-face {
+  font-family: "EB Garamond";
+  src: url('../assets/fonts/eb-garamond-roman.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 400 800;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "EB Garamond";
+  src: url('../assets/fonts/eb-garamond-italic.ttf') format('truetype');
+  font-style: italic;
+  font-weight: 400 800;
+  font-display: swap;
+}
+
 :root {
   color-scheme: light;
   font-family: "Avenir Next", "Segoe UI", sans-serif;
@@ -235,6 +251,90 @@ button {
     radial-gradient(circle at top, rgba(89, 124, 154, 0.22), transparent 34%),
     linear-gradient(180deg, #14181d 0%, #0e1217 100%);
 }
+
+.theme-paperback {
+  color-scheme: light;
+  --reader-panel-bg: #eee5d3;
+  --app-base-bg: #eee5d3;
+  --surface: rgba(243, 236, 222, 0.95);
+  --surface-strong: #f5edde;
+  --text: #272319;
+  --muted: #6c604b;
+  --stroke: rgba(80, 64, 36, 0.23);
+  --accent: #766237;
+  --navigator-completed: #8b794f;
+  --navigator-current: #645332;
+  --navigator-upcoming: rgba(109, 91, 55, 0.2);
+  --navigator-marker: #f6efdf;
+  --navigator-annotation: #9d8523;
+  --loading-skeleton-base: rgba(118, 98, 55, 0.12);
+  --loading-skeleton-highlight: rgba(118, 98, 55, 0.25);
+  --loading-progress-rail: var(--navigator-upcoming);
+  --loading-progress-stroke: var(--stroke);
+  --loading-progress-glow: var(--loading-skeleton-base);
+  --annotation-backdrop: rgba(44, 35, 19, 0.24);
+  --annotation-book-bg: var(--surface);
+  --annotation-book-border: var(--stroke);
+  --annotation-note-bg: var(--surface-strong);
+  --annotation-note-border: var(--stroke);
+  --shadow: 0 18px 48px rgba(49, 37, 16, 0.2);
+  background-color: var(--app-base-bg);
+  background-image: url('../assets/paperback-paper.webp');
+  background-size: 900px;
+}
+
+/* Broad falloff and a narrow gutter shadow suggest a gently curved, photographed leaf. */
+.reader-shell.theme-paperback::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at 58% 38%, rgba(255, 252, 238, 0.24) 12%, transparent 68%),
+    radial-gradient(ellipse at 52% 44%, transparent 42%, rgba(68, 49, 21, 0.19) 100%),
+    linear-gradient(96deg, rgba(61, 44, 20, 0.21), rgba(67, 48, 20, 0.04) 6%, rgba(255, 253, 240, 0.2) 15%, transparent 35%, rgba(73, 55, 27, 0.07) 100%);
+}
+
+.theme-paperback .reader-dust { display: none; }
+.theme-paperback input { accent-color: var(--accent); }
+
+.theme-paperback .portion-sheet {
+  isolation: isolate;
+  text-shadow: 0.25px 0.15px 0.35px rgba(40, 31, 17, 0.12);
+}
+
+.theme-paperback .portion-sheet::before {
+  content: '';
+  position: absolute;
+  inset: 0 -28px;
+  z-index: -1;
+  background: url('../assets/paperback-paper.webp') var(--paper-x) var(--paper-y) / 900px;
+  opacity: 0.22;
+  mix-blend-mode: multiply;
+  pointer-events: none;
+}
+
+.paper-reverse-ink {
+  position: absolute;
+  inset: 28px 0;
+  z-index: -1;
+  overflow: hidden;
+  font: 400 var(--paper-font-size)/var(--paper-line-height) "EB Garamond", Georgia, serif;
+  color: #463c2b;
+  opacity: 0.11;
+  transform: translateY(var(--paper-ink-offset)) scaleX(-1) rotate(var(--paper-ink-angle));
+  filter: blur(0.45px);
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+  text-shadow: none;
+}
+
+.paper-reverse-ink > div { white-space: nowrap; }
+
+.theme-preview.theme-paperback { background-size: 160px; }
+.theme-preview.theme-paperback .theme-preview-type { font-family: "EB Garamond", Georgia, serif; }
+.theme-preview.theme-paperback .theme-preview-line { background: #d7d72b; }
 
 .theme-mist {
   --palette-bg: #edf3f7;
@@ -1353,6 +1453,38 @@ button {
 
 .theme-midnight .annotation-live-rect {
   mix-blend-mode: screen;
+}
+
+.theme-paperback .annotation-text {
+  text-decoration: none;
+  border-radius: 0.12em 0.05em 0.1em 0.08em;
+  background:
+    linear-gradient(178deg, transparent 8%, rgba(205, 211, 20, 0.12) 12%, rgba(213, 218, 30, 0.6) 19%, rgba(222, 221, 24, 0.47) 78%, rgba(190, 197, 13, 0.25) 88%, transparent 94%);
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+.theme-paperback .annotation-live-overlay { mix-blend-mode: multiply; }
+
+.theme-paperback :is(.annotation-live-rect, .speech-sentence-highlight, .speech-word-highlight, .search-match-highlight) {
+  border-radius: 1px 3px 2px 1px;
+  background:
+    linear-gradient(178deg, rgba(199, 208, 15, 0.35), rgba(217, 222, 25, 0.93) 18%, rgba(226, 225, 33, 0.8) 72%, rgba(187, 198, 9, 0.5));
+  box-shadow: none;
+  clip-path: polygon(0.4% 8%, 20% 3%, 52% 6%, 79% 0%, 99.5% 6%, 100% 90%, 82% 98%, 53% 94%, 23% 100%, 0% 93%);
+}
+
+.theme-paperback :is(.annotation-live-rect, .search-match-highlight) { opacity: 0.65; }
+.theme-paperback .speech-sentence-highlight { opacity: 0.38; }
+.theme-paperback .speech-word-highlight { opacity: 0.88; }
+.theme-paperback .annotation-live-rect:nth-child(3n + 2) {
+  clip-path: polygon(0% 3%, 26% 7%, 57% 1%, 99.6% 5%, 100% 96%, 73% 93%, 35% 99%, 0.5% 91%);
+}
+
+.theme-paperback .reader-lines ::selection {
+  color: #272319;
+  background: rgba(214, 220, 26, 0.65);
+  text-shadow: none;
 }
 
 .selection-handle {

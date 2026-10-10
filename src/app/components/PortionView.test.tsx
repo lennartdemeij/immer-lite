@@ -28,4 +28,16 @@ describe('animated portion text', () => {
     expect(scope.textContent).toBe(text);
     expect(scope.querySelector('.reader-word')).toBeNull();
   });
+
+  it('keeps reverse-side ink outside canonical text ranges and word animation', () => {
+    const scope = document.createElement('div');
+    scope.innerHTML = renderToStaticMarkup(<PortionView portion={{ ...portion, id: 'paper-1', index: 1 }}
+      settings={{ fontSize: 20, lineHeight: 1.5, horizontalPadding: 20, theme: 'paperback', wordAnimation: true }}
+      annotationsByBlock={new Map()} />);
+    const reverse = scope.querySelector('.paper-reverse-ink');
+    expect(reverse?.getAttribute('aria-hidden')).toBe('true');
+    expect(reverse?.querySelector('[data-block-id], [data-block-start], .reader-word')).toBeNull();
+    expect(scope.querySelectorAll('.reader-word')).toHaveLength(4);
+    expect(createAnnotationRange(scope, 'p', 0, text.length)?.toString()).toBe(text);
+  });
 });

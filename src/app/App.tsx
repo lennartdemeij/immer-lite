@@ -102,13 +102,14 @@ export function App() {
   const [settings, setSettings] = useState<ReaderSettings>(() =>
     typeof window === 'undefined' ? DEFAULT_SETTINGS : loadSettings()
   );
+  const typographyTheme = settings.theme === 'paperback' ? 'paperback' : 'light';
   const layoutSettings = useMemo<ReaderSettings>(() => ({
     fontSize: settings.fontSize,
     lineHeight: settings.lineHeight,
     horizontalPadding: settings.horizontalPadding,
-    theme: 'light',
+    theme: typographyTheme,
     hyphenation: settings.hyphenation ?? false
-  }), [settings.fontSize, settings.lineHeight, settings.horizontalPadding, settings.hyphenation]);
+  }), [settings.fontSize, settings.lineHeight, settings.horizontalPadding, settings.hyphenation, typographyTheme]);
   const [renderedSettings, setRenderedSettings] = useState(settings);
   const displaySettings = useMemo(() => ({ ...renderedSettings, theme: settings.theme, wordAnimation: settings.wordAnimation ?? false }), [renderedSettings, settings.theme, settings.wordAnimation]);
   const [error, setError] = useState<string | null>(null);
@@ -205,11 +206,24 @@ export function App() {
       setCurrentIndex(preserveAnchorAfterRepagination(result.portions, anchorRef.current ?? desiredAnchor));
     };
 
-    paginateBook(book, viewport, layoutSettings, desiredAnchor, {
-      signal: controller.signal,
-      onPreview: applyLayout
-    })
-      .then(applyLayout)
+    const prepareLayout = async () => {
+      // Load both book faces before Pretext measures them, avoiding fallback-font line breaks.
+      if (layoutSettings.theme === 'paperback' && document.fonts) {
+        await Promise.all([
+          document.fonts.load('400 21px "EB Garamond"'),
+          document.fonts.load('italic 400 21px "EB Garamond"'),
+          document.fonts.load('650 21px "EB Garamond"')
+        ]);
+      }
+      if (cancelled) return;
+      const result = await paginateBook(book, viewport, layoutSettings, desiredAnchor, {
+        signal: controller.signal,
+        onPreview: applyLayout
+      });
+      applyLayout(result);
+    };
+
+    prepareLayout()
       .catch((paginationError) => {
         if (cancelled) {
           return;

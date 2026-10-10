@@ -115,7 +115,7 @@ export function SettingsPanel({
         <div className="settings-group">
           <span>Theme</span>
           <div className="theme-picker" role="group" aria-label="Color theme">
-            {(['light', 'sepia', 'dark', 'mist', 'sage', 'rose', 'midnight'] as const).map((theme) => (
+            {(['light', 'sepia', 'dark', 'mist', 'sage', 'rose', 'midnight', 'paperback'] as const).map((theme) => (
               <button
                 key={theme}
                 type="button"

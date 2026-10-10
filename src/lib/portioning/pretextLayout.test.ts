@@ -80,6 +80,20 @@ describe('buildRichSlice', () => {
     expect(prepareRichInline).toHaveBeenCalledTimes(2);
   });
 
+  it('remeasures when entering or leaving the paperback typeface, but reuses color-only themes', () => {
+    vi.clearAllMocks();
+    const block = makeBlock();
+    const viewport = { width: 390, height: 844, contentWidth: 320, contentHeight: 600 };
+    measureTextSlice(block, 0, 1, viewport, settings, false, false);
+    measureTextSlice(block, 0, 1, viewport, { ...settings, theme: 'sepia' }, false, false);
+    expect(prepareRichInline).toHaveBeenCalledTimes(1);
+    measureTextSlice(block, 0, 1, viewport, { ...settings, theme: 'paperback' }, false, false);
+    expect(prepareRichInline).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(prepareRichInline).mock.calls.at(-1)?.[0][0].font).toContain('EB Garamond');
+    measureTextSlice(block, 0, 1, viewport, settings, false, false);
+    expect(prepareRichInline).toHaveBeenCalledTimes(3);
+  });
+
   it('keeps visible spaces between adjacent sentences', () => {
     const slice = buildRichSlice(makeBlock(), 0, 3, settings);
 

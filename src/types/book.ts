@@ -1,4 +1,4 @@
-export type ThemeMode = 'light' | 'dark' | 'sepia' | 'mist' | 'sage' | 'rose' | 'midnight';
+export type ThemeMode = 'light' | 'dark' | 'sepia' | 'mist' | 'sage' | 'rose' | 'midnight' | 'paperback';
 
 export type InlineMark =
   | 'bold'

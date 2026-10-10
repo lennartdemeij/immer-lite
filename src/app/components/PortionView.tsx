@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, type CSSProperties } from 'react';
 import type {
   PortionBlock,
   ReaderPortion,
@@ -170,8 +170,30 @@ export const PortionView = memo(function PortionView({
   hideLeadingBoundarySceneBreak = false,
   hideTrailingBoundarySceneBreak = false
 }: PortionViewProps) {
+  // Stable per portion: revisiting a page keeps the same paper and reverse-side ink.
+  const paperSeed = Array.from(portion.id ?? '').reduce((seed, letter) =>
+    (Math.imul(seed, 31) + letter.charCodeAt(0)) >>> 0, portion.index ?? 0);
+  const reverseLines = settings.theme === 'paperback'
+    ? portion.blocks.flatMap((block) => block.type === 'text'
+      ? block.lines.map((line) => line.fragments.map((fragment) => fragment.text).join('')) : [])
+    : [];
+  const reverseOffset = reverseLines.length ? (paperSeed % reverseLines.length) : 0;
   return (
-    <div className="portion-sheet">
+    <div className="portion-sheet" style={settings.theme === 'paperback' ? {
+      '--paper-x': `${paperSeed % 389}px`,
+      '--paper-y': `${paperSeed % 521}px`,
+      '--paper-ink-offset': `${8 + paperSeed % 13}px`,
+      '--paper-ink-angle': `${(paperSeed % 7 - 3) * 0.12}deg`,
+      '--paper-font-size': `${settings.fontSize}px`,
+      '--paper-line-height': `${Math.round(settings.fontSize * settings.lineHeight)}px`
+    } as CSSProperties : undefined}>
+      {reverseLines.length > 0 ? (
+        <div className="paper-reverse-ink" aria-hidden="true">
+          {reverseLines.map((_, index) => (
+            <div key={index}>{reverseLines[(index + reverseOffset) % reverseLines.length]}</div>
+          ))}
+        </div>
+      ) : null}
       {portion.blocks.map((block, index) => {
         if (block.type === 'scene-break') {
           const isLeadingBoundary = index === 0 && hideLeadingBoundarySceneBreak;

@@ -56,15 +56,16 @@ interface PreparedSlice {
   lines?: RenderLine[];
 }
 
-// Canonical blocks are immutable. Retain only the latest font size and a
+// Canonical blocks are immutable. Retain only the latest typography and a
 // bounded set of candidate sentence ranges; closed books can be collected.
-const preparedSlices = new WeakMap<TextBlock, { fontSize: number; slices: Map<string, PreparedSlice> }>();
+const preparedSlices = new WeakMap<TextBlock, { fontKey: string; slices: Map<string, PreparedSlice> }>();
 const inlineIndexes = new WeakMap<TextBlock, Map<string, BookInline>>();
 
 function getPreparedSlice(block: TextBlock, start: number, end: number, settings: ReaderSettings): PreparedSlice {
+  const fontKey = `${settings.fontSize}:${settings.theme === 'paperback'}`;
   let cache = preparedSlices.get(block);
-  if (!cache || cache.fontSize !== settings.fontSize) {
-    cache = { fontSize: settings.fontSize, slices: new Map() };
+  if (!cache || cache.fontKey !== fontKey) {
+    cache = { fontKey, slices: new Map() };
     preparedSlices.set(block, cache);
   }
   const key = `${start}:${end}:${Boolean(settings.hyphenation)}:${settings.hyphenationLanguage ?? ''}`;

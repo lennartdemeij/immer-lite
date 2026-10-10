@@ -17,8 +17,8 @@ const DISPLAY_FONT_FAMILY =
 const MONO_FONT_FAMILY =
   '"SFMono-Regular", "Menlo", "Consolas", "Liberation Mono", monospace';
 
-function bodyFont(size: number, weight = 400, italic = false, smallCaps = false): string {
-  return `${italic ? 'italic ' : ''}${smallCaps ? 'small-caps ' : ''}${weight} ${size}px ${BODY_FONT_FAMILY}`;
+function bodyFont(size: number, weight = 400, italic = false, smallCaps = false, family = BODY_FONT_FAMILY): string {
+  return `${italic ? 'italic ' : ''}${smallCaps ? 'small-caps ' : ''}${weight} ${size}px ${family}`;
 }
 
 export function getInlineFont(
@@ -40,11 +40,12 @@ export function getInlineFont(
   const weight = marks.includes('bold') || kind === 'heading' ? 650 : 400;
   const italic = marks.includes('italic') || kind === 'quote';
   const smallCaps = marks.includes('smallcaps');
-  if (kind === 'heading') {
+  if (kind === 'heading' && settings.theme !== 'paperback') {
     return `${italic ? 'italic ' : ''}${smallCaps ? 'small-caps ' : ''}${weight} ${Math.round(baseSize)}px ${DISPLAY_FONT_FAMILY}`;
   }
 
-  return bodyFont(Math.round(baseSize), weight, italic, smallCaps);
+  return bodyFont(Math.round(baseSize), weight, italic, smallCaps,
+    settings.theme === 'paperback' ? '"EB Garamond", Georgia, serif' : BODY_FONT_FAMILY);
 }
 
 export function getBlockTypography(
