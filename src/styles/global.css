@@ -319,16 +319,22 @@ button {
 
 .theme-paperback .portion-sheet {
   isolation: isolate;
+  mix-blend-mode: multiply;
   color: #332b20;
-  text-shadow: 0.25px 0.2px 0.6px rgba(40, 31, 17, 0.28);
+  text-shadow: none;
 }
 
-/* The glyphs carry photographed fibres; their soft shadows are absorbed ink,
-   rather than a blur filter on the readable text or on every animated word. */
+/* Soften the printed edge once per text block, never per animated word.
+   Multiplying the sheet lets the same paper fibres and light run through the ink. */
+.theme-paperback .reader-lines {
+  filter: blur(0.22px);
+}
+
+/* Uncoated stock absorbs ink in all directions, without a raised, cast shadow. */
 @supports ((background-clip: text) or (-webkit-background-clip: text)) {
   .paper-ink {
     background-image:
-      linear-gradient(rgba(3, 2, 0, 0.84), rgba(3, 2, 0, 0.84)),
+      linear-gradient(rgba(3, 2, 0, var(--ink-density, 0.72)), rgba(3, 2, 0, var(--ink-density, 0.72))),
       url('../assets/paperback-paper.webp');
     background-position: var(--paper-x) var(--paper-y);
     background-size: 216px;
@@ -336,16 +342,18 @@ button {
     background-clip: text;
     color: transparent;
     text-shadow:
-      0.2px 0.35px var(--ink-bleed, 1.15px) rgba(47, 35, 20, 0.34),
-      -0.22px 0.08px 0.35px rgba(121, 66, 40, 0.17),
-      0.22px -0.08px 0.35px rgba(47, 77, 91, 0.13);
+      0 0 0.45px rgba(37, 29, 18, 0.6),
+      0 0 var(--ink-bleed, 1.4px) rgba(47, 35, 20, 0.38),
+      -0.16px 0 0.45px rgba(121, 66, 40, 0.1),
+      0.16px 0 0.45px rgba(47, 77, 91, 0.08);
   }
 }
 
 /* Uneven pressure and focus form small, local patches rather than uniform blur. */
 .reader-line:nth-child(7n + 3) .paper-ink:nth-child(n + 5):nth-child(-n + 13),
 .reader-block:nth-of-type(3n + 2) .reader-line:nth-child(5n + 1) .paper-ink:nth-child(-n + 7) {
-  --ink-bleed: 1.8px;
+  --ink-bleed: 2px;
+  --ink-density: 0.62;
 }
 
 .paper-reverse-ink {
