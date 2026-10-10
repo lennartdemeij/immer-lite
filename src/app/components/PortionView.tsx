@@ -24,12 +24,12 @@ interface FragmentSegment {
   end?: number;
 }
 
-function renderWords(segment: FragmentSegment) {
+function renderWords(segment: FragmentSegment, animateWords: boolean, paperInk: boolean) {
   return Array.from(segment.text.matchAll(/\s+|\S+/gu), (match) => {
     const start = segment.start === undefined ? undefined : segment.start + match.index;
     const end = start === undefined ? undefined : Math.min(start + match[0].length, segment.end ?? Infinity);
     return (
-      <span key={match.index} className={/\S/u.test(match[0]) ? 'reader-word' : undefined}
+      <span key={match.index} className={/\S/u.test(match[0]) ? [animateWords && 'reader-word', paperInk && 'paper-ink'].filter(Boolean).join(' ') : undefined}
         data-block-start={start} data-block-end={end}>
         {match[0]}
       </span>
@@ -149,7 +149,8 @@ const TextSlice = memo(function TextSlice({
                           : undefined
                       }
                     >
-                      {settings.wordAnimation ? renderWords(segment) : segment.text}
+                      {settings.wordAnimation || settings.theme === 'paperback'
+                        ? renderWords(segment, Boolean(settings.wordAnimation), settings.theme === 'paperback') : segment.text}
                     </span>
                   ))}
                 </span>

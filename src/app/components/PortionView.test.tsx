@@ -29,15 +29,19 @@ describe('animated portion text', () => {
     expect(scope.querySelector('.reader-word')).toBeNull();
   });
 
-  it('keeps reverse-side ink outside canonical text ranges and word animation', () => {
+  it.each([true, false])('keeps textured ink selectable with word animation %s', (wordAnimation) => {
     const scope = document.createElement('div');
+    const annotation = { id: 'note', startOffset: 7, endOffset: 12 } as TextAnnotation;
     scope.innerHTML = renderToStaticMarkup(<PortionView portion={{ ...portion, id: 'paper-1', index: 1 }}
-      settings={{ fontSize: 20, lineHeight: 1.5, horizontalPadding: 20, theme: 'paperback', wordAnimation: true }}
-      annotationsByBlock={new Map()} />);
+      settings={{ fontSize: 20, lineHeight: 1.5, horizontalPadding: 20, theme: 'paperback', wordAnimation }}
+      annotationsByBlock={new Map([['p', [annotation]]])} />);
     const reverse = scope.querySelector('.paper-reverse-ink');
     expect(reverse?.getAttribute('aria-hidden')).toBe('true');
     expect(reverse?.querySelector('[data-block-id], [data-block-start], .reader-word')).toBeNull();
-    expect(scope.querySelectorAll('.reader-word')).toHaveLength(4);
+    expect(scope.querySelectorAll('.reader-word')).toHaveLength(wordAnimation ? 4 : 0);
+    expect(scope.querySelectorAll('.paper-ink')).toHaveLength(4);
+    expect(scope.querySelector('[data-annotation-id="note"]')?.textContent).toBe('word,');
     expect(createAnnotationRange(scope, 'p', 0, text.length)?.toString()).toBe(text);
+    expect(createAnnotationRange(scope, 'p', 5, 7)?.toString()).toBe('  ');
   });
 });

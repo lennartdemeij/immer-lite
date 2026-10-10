@@ -279,8 +279,26 @@ button {
   --annotation-note-border: var(--stroke);
   --shadow: 0 18px 48px rgba(49, 37, 16, 0.2);
   background-color: var(--app-base-bg);
-  background-image: url('../assets/paperback-paper.webp');
-  background-size: 900px;
+  background-image: url('../assets/paperback-tile.svg');
+  background-size: 1800px;
+}
+
+.reader-paper {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.reader-paper-layer {
+  position: absolute;
+  inset: -1800px 0;
+  background: url('../assets/paperback-tile.svg') repeat;
+  background-size: 1800px;
+  will-change: transform;
 }
 
 /* Broad falloff and a narrow gutter shadow suggest a gently curved, photographed leaf. */
@@ -288,6 +306,7 @@ button {
   content: '';
   position: absolute;
   inset: 0;
+  z-index: 1;
   pointer-events: none;
   background:
     radial-gradient(ellipse at 58% 35%, rgba(255, 252, 238, 0.34) 12%, transparent 66%),
@@ -304,15 +323,29 @@ button {
   text-shadow: 0.25px 0.2px 0.6px rgba(40, 31, 17, 0.28);
 }
 
-.theme-paperback .portion-sheet::before {
-  content: '';
-  position: absolute;
-  inset: 0 -28px;
-  z-index: -1;
-  background: url('../assets/paperback-paper.webp') var(--paper-x) var(--paper-y) / 900px;
-  opacity: 0.22;
-  mix-blend-mode: multiply;
-  pointer-events: none;
+/* The glyphs carry photographed fibres; their soft shadows are absorbed ink,
+   rather than a blur filter on the readable text or on every animated word. */
+@supports ((background-clip: text) or (-webkit-background-clip: text)) {
+  .paper-ink {
+    background-image:
+      linear-gradient(rgba(29, 23, 15, 0.94), rgba(29, 23, 15, 0.94)),
+      url('../assets/paperback-paper.webp');
+    background-position: var(--paper-x) var(--paper-y);
+    background-size: 180px;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    text-shadow:
+      0.2px 0.35px var(--ink-bleed, 1.15px) rgba(47, 35, 20, 0.34),
+      -0.22px 0.08px 0.35px rgba(121, 66, 40, 0.17),
+      0.22px -0.08px 0.35px rgba(47, 77, 91, 0.13);
+  }
+}
+
+/* Uneven pressure and focus form small, local patches rather than uniform blur. */
+.reader-line:nth-child(7n + 3) .paper-ink:nth-child(n + 5):nth-child(-n + 13),
+.reader-block:nth-of-type(3n + 2) .reader-line:nth-child(5n + 1) .paper-ink:nth-child(-n + 7) {
+  --ink-bleed: 1.8px;
 }
 
 .paper-reverse-ink {
@@ -322,9 +355,9 @@ button {
   overflow: hidden;
   font: 650 var(--paper-font-size)/var(--paper-line-height) "EB Garamond", Georgia, serif;
   color: #463c2b;
-  opacity: 0.12;
+  opacity: 0.135;
   transform: translateY(var(--paper-ink-offset)) scaleX(-1) rotate(var(--paper-ink-angle));
-  filter: blur(1.15px);
+  filter: blur(2.2px);
   pointer-events: none;
   user-select: none;
   -webkit-user-select: none;

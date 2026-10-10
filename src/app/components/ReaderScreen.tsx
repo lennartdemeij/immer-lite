@@ -1831,8 +1831,11 @@ export function ReaderScreen({
       className={`reader-shell theme-${settings.theme}`}
       style={{ '--visual-viewport-inset': `${visualViewportInset}px` } as CSSProperties}
     >
-      {requestedSettings.backgroundAnimation ? (
-        <ReaderBackground key={book.fingerprint} portionIndex={portionIndex} paginationPending={paginationPending}
+      {requestedSettings.backgroundAnimation || settings.theme === 'paperback' ? (
+        <ReaderBackground key={`${book.fingerprint}:${settings.theme === 'paperback' ? 'paper' : 'dust'}`}
+          variant={settings.theme === 'paperback' ? 'paper' : 'dust'}
+          motionEnabled={requestedSettings.backgroundAnimation ?? false}
+          transitionDuration={wordMotionRef.current?.duration ?? SNAP_ANIMATION_MS} portionIndex={portionIndex} paginationPending={paginationPending}
           dragOffset={dragOffset} isDragging={isDragging} snapDirection={snapDirection} transitionEnabled={transitionEnabled} />
       ) : null}
       <input ref={bookInputRef} className="sr-only" type="file"
