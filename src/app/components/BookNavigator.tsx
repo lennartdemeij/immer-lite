@@ -75,7 +75,7 @@ export function BookNavigator({ portions, annotations, focusedIndex, coverUrl, e
     const index = navigatorIndexAt(layout.groups, y, mode);
     if (index == null || index === drag.current?.index) return;
     if (drag.current) drag.current.index = index;
-    window.navigator.vibrate?.(8);
+    window.navigator.vibrate?.(20);
     onJump(index);
   }
 
