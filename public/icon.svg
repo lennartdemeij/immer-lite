@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <title>Immer Lite — Koraal</title>
+  <rect width="512" height="512" fill="#c96f63"/>
+  <g transform="translate(27 0) skewX(-6)">
+    <path d="M112 254C112 230 144 230 144 254V350C144 382 192 382 192 350V162C192 130 240 130 240 162V350C240 382 288 382 288 350V162C288 130 336 130 336 162V254C336 278 368 278 368 254" fill="none" stroke="#fff6e8" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>
