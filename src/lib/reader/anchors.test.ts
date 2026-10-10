@@ -1,6 +1,35 @@
 import { describe, expect, it } from 'vitest';
 import type { BookBlock, BookSection, CanonicalBook, TextBlock } from '../../types/book';
-import { clampAnchorToBook, getPreferredStartAnchor } from './anchors';
+import { clampAnchorToBook, getPreferredStartAnchor, preserveAnchorAfterRepagination } from './anchors';
+import type { ReaderAnchor, ReaderPortion } from '../../types/reader';
+
+describe('preserveAnchorAfterRepagination', () => {
+  const anchor = (sentenceIndex: number): ReaderAnchor => ({
+    blockId: 'paragraph', blockOrder: 0, sentenceIndex, lineOffset: 0
+  });
+  const portions: ReaderPortion[] = [0, 1, 2].map((index) => ({
+    id: `portion-${index}`, index, sectionId: 'chapter', sectionLabel: 'Chapter',
+    start: anchor(index), end: anchor(index + 1), blocks: []
+  }));
+
+  it('keeps the current portion when its start equals the previous portion end', () => {
+    // Saving a note can resize the viewport and re-apply the same layout.
+    expect(preserveAnchorAfterRepagination(portions, portions[1].start)).toBe(1);
+  });
+
+  it('does not walk backward when preview and final layouts are applied', () => {
+    let index = 2;
+    for (let pass = 0; pass < 3; pass += 1) {
+      index = preserveAnchorAfterRepagination(portions, portions[index].start);
+    }
+    expect(index).toBe(2);
+  });
+
+  it('still finds anchors within a portion and at the end of the book', () => {
+    expect(preserveAnchorAfterRepagination(portions, { ...anchor(1), lineOffset: 2 })).toBe(1);
+    expect(preserveAnchorAfterRepagination(portions, anchor(3))).toBe(2);
+  });
+});
 
 function makeTextBlock(
   id: string,

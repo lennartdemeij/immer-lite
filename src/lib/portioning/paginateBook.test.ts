@@ -264,6 +264,10 @@ describe('paginateBook', () => {
       sentenceIndex: 0
     });
     expect(result.portions[1].start.lineOffset).toBeGreaterThan(0);
+    // Layout updates after saving a note must keep a split sentence on its
+    // current page, even when the previous page ends at the same line offset.
+    expect(result.portions[0].end).toEqual(result.portions[1].start);
+    expect(preserveAnchorAfterRepagination(result.portions, result.portions[1].start)).toBe(1);
   });
 
   it('preserves the closest reading anchor after repagination', async () => {

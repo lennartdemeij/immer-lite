@@ -640,7 +640,9 @@ export function findPortionIndexForAnchor(
 ): number {
   for (let index = 0; index < portions.length; index += 1) {
     const portion = portions[index];
-    if (compareAnchors(portion.start, anchor) <= 0 && compareAnchors(portion.end, anchor) >= 0) {
+    // A split sentence ends at the following portion's start cursor. Shared
+    // boundaries belong to that following portion, not the previous one.
+    if (compareAnchors(portion.start, anchor) <= 0 && compareAnchors(portion.end, anchor) > 0) {
       return index;
     }
   }
