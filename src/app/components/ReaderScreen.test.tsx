@@ -33,6 +33,7 @@ let root: Root;
 let onNext: ReturnType<typeof vi.fn>;
 let onSaveAnnotation: ReturnType<typeof vi.fn>;
 const captureDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'hasPointerCapture');
+const setCaptureDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'setPointerCapture');
 const rangeRectsDescriptor = Object.getOwnPropertyDescriptor(Range.prototype, 'getClientRects');
 
 function pointer(target: Element, type: string, pointerType = 'mouse') {
@@ -56,6 +57,7 @@ beforeEach(() => {
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
   vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
   Object.defineProperty(HTMLElement.prototype, 'hasPointerCapture', { configurable: true, value: () => false });
+  Object.defineProperty(HTMLElement.prototype, 'setPointerCapture', { configurable: true, value: () => {} });
   Object.defineProperty(Range.prototype, 'getClientRects', { configurable: true, value: () => [] });
   window.getSelection()?.removeAllRanges();
   onNext = vi.fn();
@@ -71,6 +73,8 @@ afterEach(() => {
   container.remove();
   if (captureDescriptor) Object.defineProperty(HTMLElement.prototype, 'hasPointerCapture', captureDescriptor);
   else Reflect.deleteProperty(HTMLElement.prototype, 'hasPointerCapture');
+  if (setCaptureDescriptor) Object.defineProperty(HTMLElement.prototype, 'setPointerCapture', setCaptureDescriptor);
+  else Reflect.deleteProperty(HTMLElement.prototype, 'setPointerCapture');
   if (rangeRectsDescriptor) Object.defineProperty(Range.prototype, 'getClientRects', rangeRectsDescriptor);
   else Reflect.deleteProperty(Range.prototype, 'getClientRects');
   vi.unstubAllGlobals();
@@ -78,6 +82,15 @@ afterEach(() => {
 });
 
 describe('reader navigation', () => {
+  it.each(['mouse', 'touch'])('keeps the navigator open after tapping its rail (%s)', pointerType => {
+    const rail = container.querySelector('.navigator-rail-hitarea')!;
+    act(() => pointer(rail, 'pointerdown', pointerType));
+    act(() => pointer(rail, 'pointerup', pointerType));
+    expect(container.querySelector('.book-navigator.expanded')).not.toBeNull();
+    expect(container.querySelector('[aria-label="Reading tools"]')?.getAttribute('aria-expanded')).toBe('true');
+    expect(onNext).not.toHaveBeenCalled();
+  });
+
   it('keeps the navigator open while viewing and switching notes', () => {
     renderReader([0, 1].map(index => ({ id: `note-${index}`, fingerprint: 'book', blockId: 'paragraph',
       blockOrder: 0, sentenceIndex: 0, startOffset: index, endOffset: index + 5,

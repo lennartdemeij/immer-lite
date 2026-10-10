@@ -1082,9 +1082,9 @@ button {
 .side-left .navigator-rail-hitarea { right: auto; left: 0; }
 .mode-portions .navigator-rail-hitarea { top: 0; bottom: 0; }
 .navigator-modes {
-  position: absolute;
+  position: fixed;
   bottom: calc(16px + var(--safe-bottom));
-  right: 12px;
+  left: calc(12px + var(--safe-left));
   display: flex;
   padding: 3px;
   border: 1px solid var(--stroke);
@@ -1093,7 +1093,7 @@ button {
   pointer-events: auto;
   z-index: 5;
 }
-.side-left .navigator-modes { right: auto; left: 12px; }
+.side-left .navigator-modes { left: auto; right: calc(12px + var(--safe-right)); }
 .navigator-viewing-note :is(.book-navigator, .reader-header) { z-index: 36; }
 .navigator-viewing-note .annotation-sheet-viewer { bottom: calc(84px + var(--safe-bottom) + var(--visual-viewport-inset, 0px)); }
 .navigator-modes button { display: grid; justify-items: center; gap: 3px; min-width: 54px; min-height: 46px; padding: 5px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); font: 500 10px/1.2 system-ui, sans-serif; }

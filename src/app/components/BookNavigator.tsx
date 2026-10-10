@@ -15,6 +15,7 @@ interface BookNavigatorProps {
   navigatorRef: RefObject<HTMLElement>;
   onJump: (index: number) => void;
   onNote: (annotation: TextAnnotation) => void;
+  onOpen: () => void;
   onDragging: (dragging: boolean) => void;
   onTilt: (tilt: { rotateY: number; rotateZ: number; originY: number }) => void;
 }
@@ -27,12 +28,12 @@ const modes: Array<{ mode: NavigatorMode; label: string; path: string }> = [
 ];
 
 export function BookNavigator({ portions, annotations, focusedIndex, coverUrl, expanded, side, disabled,
-  navigatorRef, onJump, onNote, onDragging, onTilt }: BookNavigatorProps) {
+  navigatorRef, onJump, onNote, onOpen, onDragging, onTilt }: BookNavigatorProps) {
   const [selectedMode, setSelectedMode] = useState<NavigatorMode>('portions');
   const viewportRef = useRef<HTMLDivElement>(null);
   const [height, setHeight] = useState(0);
   const [dragOffset, setDragOffset] = useState<number | null>(null);
-  const drag = useRef<{ pointerId: number; startY: number; offset: number; index: number; mode: NavigatorMode } | null>(null);
+  const drag = useRef<{ pointerId: number; startX: number; startY: number; moved: boolean; offset: number; index: number; mode: NavigatorMode } | null>(null);
   const mode = drag.current?.mode ?? (expanded ? selectedMode : 'portions');
   const chapters = useMemo(() => getNavigatorChapters(portions), [portions]);
   const notes = useMemo(() => {
@@ -82,7 +83,7 @@ export function BookNavigator({ portions, annotations, focusedIndex, coverUrl, e
     event.preventDefault();
     event.stopPropagation();
     if (disabled || !portions.length) return;
-    drag.current = { pointerId: event.pointerId, startY: event.clientY, offset, index: focusedIndex, mode };
+    drag.current = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, moved: false, offset, index: focusedIndex, mode };
     event.currentTarget.setPointerCapture(event.pointerId);
     onDragging(true);
     if (mode !== 'portions') jumpAt(event.clientY - viewportRef.current!.getBoundingClientRect().top + viewportRef.current!.scrollTop);
@@ -93,6 +94,8 @@ export function BookNavigator({ portions, annotations, focusedIndex, coverUrl, e
     if (!gesture || gesture.pointerId !== event.pointerId || disabled) return;
     event.preventDefault();
     const delta = event.clientY - gesture.startY;
+    gesture.moved ||= Math.hypot(event.clientX - gesture.startX, delta) > 6;
+    if (!gesture.moved) return;
     if (mode === 'portions') {
       const nextOffset = gesture.offset + delta;
       setDragOffset(nextOffset);
@@ -108,10 +111,12 @@ export function BookNavigator({ portions, annotations, focusedIndex, coverUrl, e
     event.preventDefault();
     event.stopPropagation();
     if (event.type !== 'pointercancel') pointerMove(event);
+    const tapped = event.type !== 'pointercancel' && !drag.current.moved;
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
     drag.current = null;
     setDragOffset(null);
     onDragging(false);
+    if (tapped) onOpen();
     onTilt({ rotateY: 0, rotateZ: 0, originY: 50 });
   }
 

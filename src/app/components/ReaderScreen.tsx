@@ -1650,7 +1650,10 @@ export function ReaderScreen({
         portions={portions} annotations={annotations} focusedIndex={focusedPortionIndex} coverUrl={coverUrl}
         expanded={navigatorExpanded} side={requestedSettings.navigatorSide ?? 'right'}
         disabled={readAloud.isPlaying || paginationPending} onJump={onJumpToPortion}
-        onNote={handleAnnotationPress} onDragging={setProgressDragging} onTilt={setProgressTilt} />
+        onNote={handleAnnotationPress} onOpen={() => {
+          setToolsOpen(true);
+          setSearchOpen(false); setSettingsOpen(false); setReadAloudOpen(false);
+        }} onDragging={setProgressDragging} onTilt={setProgressTilt} />
 
       <main
         ref={stageRef}
