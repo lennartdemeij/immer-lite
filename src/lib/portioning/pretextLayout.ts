@@ -62,7 +62,7 @@ const preparedSlices = new WeakMap<TextBlock, { fontKey: string; slices: Map<str
 const inlineIndexes = new WeakMap<TextBlock, Map<string, BookInline>>();
 
 function getPreparedSlice(block: TextBlock, start: number, end: number, settings: ReaderSettings): PreparedSlice {
-  const fontKey = `${settings.fontSize}:${settings.theme === 'paperback'}`;
+  const fontKey = getInlineFont(settings, [], 'paragraph');
   let cache = preparedSlices.get(block);
   if (!cache || cache.fontKey !== fontKey) {
     cache = { fontKey, slices: new Map() };

@@ -102,7 +102,7 @@ export function App() {
   const [settings, setSettings] = useState<ReaderSettings>(() =>
     typeof window === 'undefined' ? DEFAULT_SETTINGS : loadSettings()
   );
-  const typographyTheme = settings.theme === 'paperback' ? 'paperback' : 'light';
+  const typographyTheme = settings.theme === 'paperback' || settings.theme === 'coral' ? settings.theme : 'light';
   const layoutSettings = useMemo<ReaderSettings>(() => ({
     fontSize: settings.fontSize,
     lineHeight: settings.lineHeight,

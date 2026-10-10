@@ -14,6 +14,7 @@ const BODY_FONT_FAMILY =
   '"Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif';
 const DISPLAY_FONT_FAMILY =
   '"Avenir Next Condensed", "Gill Sans", "Trebuchet MS", sans-serif';
+const SANS_FONT_FAMILY = '"Avenir Next", "Segoe UI", sans-serif';
 const MONO_FONT_FAMILY =
   '"SFMono-Regular", "Menlo", "Consolas", "Liberation Mono", monospace';
 
@@ -40,12 +41,12 @@ export function getInlineFont(
   const weight = marks.includes('bold') || kind === 'heading' ? 650 : settings.theme === 'paperback' ? 450 : 400;
   const italic = marks.includes('italic') || kind === 'quote';
   const smallCaps = marks.includes('smallcaps');
-  if (kind === 'heading' && settings.theme !== 'paperback') {
+  if (kind === 'heading' && settings.theme !== 'paperback' && settings.theme !== 'coral') {
     return `${italic ? 'italic ' : ''}${smallCaps ? 'small-caps ' : ''}${weight} ${Math.round(baseSize)}px ${DISPLAY_FONT_FAMILY}`;
   }
 
   return bodyFont(Math.round(baseSize), weight, italic, smallCaps,
-    settings.theme === 'paperback' ? '"EB Garamond", Georgia, serif' : BODY_FONT_FAMILY);
+    settings.theme === 'paperback' ? '"EB Garamond", Georgia, serif' : settings.theme === 'coral' ? SANS_FONT_FAMILY : BODY_FONT_FAMILY);
 }
 
 export function getBlockTypography(
