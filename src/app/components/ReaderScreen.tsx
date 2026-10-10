@@ -29,7 +29,7 @@ import {
   groupAnnotationsByBlock
 } from '../../lib/annotations/domain';
 import { createAnnotationRange, readAnnotationSelection, readTouchWord } from '../../lib/annotations/domSelection';
-import { getAnnotationPortionIndexes } from '../../lib/annotations/navigation';
+import { BookNavigator } from './BookNavigator';
 import { animatePortionWords, createWordDrag, type WordDrag, type WordMotion } from '../../lib/reader/wordMotion';
 
 interface ReaderScreenProps {
@@ -77,14 +77,6 @@ interface PaneLayout {
   forwardSnapOffset: number;
 }
 
-interface ProgressDragState {
-  pointerId: number;
-  startY: number;
-  startItemCenter: number;
-  currentIndex: number;
-  moved: boolean;
-}
-
 interface ProgressTilt {
   rotateY: number;
   rotateZ: number;
@@ -100,12 +92,7 @@ const SNAP_THRESHOLD_RATIO = 0.06;
 const SNAP_THRESHOLD_PX = 32;
 const SNAP_ANIMATION_MS = 240;
 const WORD_ANIMATION_MS = SNAP_ANIMATION_MS * 2;
-const PORTION_NAV_ITEM_HEIGHT_PX = 4;
-const CHAPTER_TRACK_GAP_PX = 3;
-const NAVIGATOR_COVER_HEIGHT_PX = 48;
 const CONTINUATION_BRIDGE_WIDTH_PX = 25;
-const PROGRESS_TILT_MAX_Y_DEG = 34;
-const PROGRESS_TILT_MAX_Z_DEG = 7;
 const READER_HAPTIC_MS = 8;
 const LONG_PRESS_MS = 320;
 const SELECTION_SETTLE_MS = 260;
@@ -333,8 +320,6 @@ export function ReaderScreen({
   const wordMotionRef = useRef<WordMotion | null>(null);
   const wordDragRef = useRef<WordDrag | null>(null);
   const wordOriginRef = useRef<{ x: number; y: number }>();
-  const [progressTrackHeight, setProgressTrackHeight] = useState(0);
-  const [progressDragOffset, setProgressDragOffset] = useState(0);
   const [progressDragging, setProgressDragging] = useState(false);
   const navigatorExpanded = progressDragging || toolsOpen;
   const navigatorRef = useRef<HTMLElement>(null);
@@ -371,8 +356,6 @@ export function ReaderScreen({
   const longPressTriggeredRef = useRef(false);
   const stageElementRef = useRef<HTMLElement | null>(null);
   const selectionFinalizeTimeoutRef = useRef<number | null>(null);
-  const progressPointerIdRef = useRef<number | null>(null);
-  const progressDragRef = useRef<ProgressDragState | null>(null);
   const snapTimeoutRef = useRef<number | null>(null);
   const settleHapticPendingRef = useRef(false);
   const dragAnimationFrameRef = useRef<number | null>(null);
@@ -384,7 +367,6 @@ export function ReaderScreen({
   const previousPaneRef = useRef<HTMLDivElement | null>(null);
   const currentPaneRef = useRef<HTMLDivElement | null>(null);
   const nextPaneRef = useRef<HTMLDivElement | null>(null);
-  const progressTrackRef = useRef<HTMLDivElement | null>(null);
   const settingsPanelRef = useRef<HTMLElement>(null);
   const settingsButtonRef = useRef<HTMLButtonElement | null>(null);
   const annotationSheetRef = useRef<HTMLDivElement | null>(null);
@@ -694,8 +676,6 @@ export function ReaderScreen({
     clearDragAnimationFrame();
     clearLongPressTimeout();
     pointerState.current = null;
-    progressPointerIdRef.current = null;
-    progressDragRef.current = null;
     settleHapticPendingRef.current = false;
     isDraggingRef.current = false;
     flushDragOffset(0);
@@ -703,7 +683,6 @@ export function ReaderScreen({
     setSnapDirection(null);
     setTransitionEnabled(false);
     setProgressDragging(false);
-    setProgressDragOffset(0);
     setProgressTilt(getNeutralProgressTilt());
   }, [readAloud.isPlaying]);
 
@@ -1008,53 +987,6 @@ export function ReaderScreen({
   ]);
 
   const coverUrl = book.metadata.coverImageHref ? book.resources[book.metadata.coverImageHref]?.objectUrl : undefined;
-  const portionNavigation = useMemo(() => {
-    let topPx = coverUrl ? NAVIGATOR_COVER_HEIGHT_PX + 8 : 0;
-    let previousSectionId: string | null = null;
-    const items = portions.map((readerPortion, index) => {
-      if (previousSectionId !== null && previousSectionId !== readerPortion.sectionId) {
-        topPx += CHAPTER_TRACK_GAP_PX;
-      }
-
-      const item = {
-        index,
-        sectionId: readerPortion.sectionId,
-        label: readerPortion.sectionLabel,
-        topPx,
-        heightPx: PORTION_NAV_ITEM_HEIGHT_PX
-      };
-      topPx += PORTION_NAV_ITEM_HEIGHT_PX;
-      previousSectionId = readerPortion.sectionId;
-      return item;
-    });
-
-    return {
-      items,
-      totalHeightPx: topPx
-    };
-  }, [portions, coverUrl]);
-  const portionNavigationItemByIndex = useMemo(() => {
-    const next = new Map<number, (typeof portionNavigation.items)[number]>();
-    portionNavigation.items.forEach((item) => {
-      next.set(item.index, item);
-    });
-    return next;
-  }, [portionNavigation.items]);
-  useEffect(() => {
-    const node = progressTrackRef.current;
-    if (!node) {
-      return;
-    }
-
-    const update = () => {
-      setProgressTrackHeight(node.getBoundingClientRect().height);
-    };
-
-    update();
-    const observer = new ResizeObserver(() => update());
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [portionNavigation.items.length]);
   const stageHeight = stageRef.current?.clientHeight ?? 0;
   const fallbackSheetHeight = viewport
     ? viewport.contentHeight + READER_CHROME.portionEdgePadding * 2
@@ -1160,69 +1092,6 @@ export function ReaderScreen({
     stageHeight
   ]);
   const annotationsByBlock = useMemo(() => groupAnnotationsByBlock(annotations), [annotations]);
-  const annotationPortionIndexes = useMemo(
-    () => getAnnotationPortionIndexes(annotations, portions),
-    [annotations, portions]
-  );
-  const activeNavigationIndex = clamp(
-    focusedPortionIndex,
-    0,
-    Math.max(0, portionNavigation.items.length - 1)
-  );
-  const activeNavigationItem = portionNavigationItemByIndex.get(activeNavigationIndex);
-  const navigationBaseOffset =
-    progressTrackHeight > 0 && activeNavigationItem
-      ? progressTrackHeight / 2 -
-        (activeNavigationItem.topPx + activeNavigationItem.heightPx / 2)
-      : 0;
-  const navigationStripOffset = navigationBaseOffset + progressDragOffset;
-  const visibleNavigationItems = portionNavigation.items.filter((item) =>
-    progressTrackHeight <= 0 || (
-      item.topPx + item.heightPx + navigationStripOffset >= -PORTION_NAV_ITEM_HEIGHT_PX &&
-      item.topPx + navigationStripOffset <= progressTrackHeight + PORTION_NAV_ITEM_HEIGHT_PX
-    )
-  );
-  // Keep tappable labels below the compact tools bar.
-  const navigationLabelTop = toolsOpen ? (toolsRef.current?.getBoundingClientRect().bottom ?? 62) + 20 : 24;
-  const navigationChapterLabels = useMemo(() => {
-    if (!navigatorExpanded || progressTrackHeight <= 0) return [];
-    const candidates = portionNavigation.items
-      .filter((item, index, items) => index === 0 || item.sectionId !== items[index - 1].sectionId)
-      .map((item) => {
-        const active = item.sectionId === activeNavigationItem?.sectionId;
-        return {
-          sectionId: item.sectionId, label: item.label, index: item.index, active,
-          y: active ? progressTrackHeight / 2 : item.topPx + navigationStripOffset + 8
-        };
-      })
-      .filter((item) => item.y >= navigationLabelTop && item.y <= progressTrackHeight - 24)
-      .sort((left, right) => Number(right.active) - Number(left.active) ||
-        Math.abs(left.y - progressTrackHeight / 2) - Math.abs(right.y - progressTrackHeight / 2));
-    const labels: typeof candidates = [];
-    for (const candidate of candidates) {
-      if (labels.every((label) => Math.abs(label.y - candidate.y) >= 42)) labels.push(candidate);
-    }
-    return labels;
-  }, [navigatorExpanded, navigationLabelTop, progressTrackHeight, portionNavigation.items, activeNavigationItem?.sectionId, navigationStripOffset]);
-  const navigationNoteLabels = useMemo(() => {
-    const labels: { annotation: TextAnnotation; index: number; y: number; count: number }[] = [];
-    if (!navigatorExpanded) return labels;
-    for (const annotation of annotations) {
-      const index = findTextPortionIndex(textPortionIndex, annotation.blockId, annotation.startOffset);
-      const item = portionNavigationItemByIndex.get(index);
-      if (!item) continue;
-      const markerY = item.topPx + item.heightPx / 2 + navigationStripOffset;
-      const y = [markerY, markerY + 36, markerY - 36].find((position) =>
-        position >= navigationLabelTop && position <= progressTrackHeight - 12 &&
-        navigationChapterLabels.every((chapter) => Math.abs(chapter.y - position) >= 36)
-      );
-      if (y === undefined) continue;
-      const nearby = labels.find((label) => Math.abs(label.y - y) < 26);
-      if (nearby) { nearby.count += 1; continue; }
-      labels.push({ annotation, index, y, count: 1 });
-    }
-    return labels;
-  }, [navigatorExpanded, navigationLabelTop, annotations, textPortionIndex, portionNavigationItemByIndex, navigationStripOffset, progressTrackHeight, navigationChapterLabels]);
   const continuationStyles = useMemo(() => {
     const stageWidth = stageRef.current?.clientWidth ?? viewport?.width ?? 0;
     if (stageHeight <= 0 || stageWidth <= 0 || !portion) {
@@ -1434,89 +1303,6 @@ export function ReaderScreen({
     }
 
     return nextPortion ? forwardProgress : 0;
-  }
-
-  function findClosestNavigationIndex(targetCenter: number): number | null {
-    if (portionNavigation.items.length === 0) {
-      return null;
-    }
-
-    let closest = portionNavigation.items[0];
-    let closestDistance = Math.abs(
-      closest.topPx + closest.heightPx / 2 - targetCenter
-    );
-
-    for (let index = 1; index < portionNavigation.items.length; index += 1) {
-      const item = portionNavigation.items[index];
-      const distance = Math.abs(item.topPx + item.heightPx / 2 - targetCenter);
-      if (distance >= closestDistance) {
-        continue;
-      }
-
-      closest = item;
-      closestDistance = distance;
-    }
-
-    return closest.index;
-  }
-
-  function getNavigationOffsetForIndex(index: number): number {
-    const item = portionNavigationItemByIndex.get(index);
-    if (!item || progressTrackHeight <= 0) {
-      return 0;
-    }
-
-    return progressTrackHeight / 2 - (item.topPx + item.heightPx / 2);
-  }
-
-  function getProgressTilt(clientX: number, clientY: number, deltaY: number): ProgressTilt {
-    const viewportWidth = Math.max(window.innerWidth || viewport?.width || 1, 1);
-    const viewportHeight = Math.max(window.innerHeight || viewport?.height || 1, 1);
-    const horizontalRatio = clamp((clientX / viewportWidth) * 4, 0, 1);
-    const verticalDragRatio = clamp(-deltaY / 95, -1, 1);
-
-    return {
-      rotateY: horizontalRatio * PROGRESS_TILT_MAX_Y_DEG,
-      rotateZ: -verticalDragRatio * PROGRESS_TILT_MAX_Z_DEG,
-      originY: clamp((clientY / viewportHeight) * 100, 12, 88)
-    };
-  }
-
-  function updateProgressDragFromPointer(
-    event: React.PointerEvent<HTMLDivElement>
-  ): number | null {
-    if (readAloud.isPlaying) return null;
-    const dragState = progressDragRef.current;
-    if (
-      progressPointerIdRef.current !== event.pointerId ||
-      !dragState ||
-      dragState.pointerId !== event.pointerId
-    ) {
-      return null;
-    }
-
-    const deltaY = event.clientY - dragState.startY;
-    setProgressTilt(getProgressTilt(event.clientX, event.clientY, deltaY));
-    if (Math.abs(deltaY) > 1) {
-      dragState.moved = true;
-    }
-
-    const targetCenter = dragState.startItemCenter - deltaY;
-    const nextIndex = findClosestNavigationIndex(targetCenter);
-    if (nextIndex === null) {
-      return null;
-    }
-
-    const dragVisualOffset = progressTrackHeight / 2 - dragState.startItemCenter + deltaY;
-    setProgressDragOffset(dragVisualOffset - getNavigationOffsetForIndex(nextIndex));
-
-    if (dragState.moved && nextIndex !== dragState.currentIndex) {
-      dragState.currentIndex = nextIndex;
-      triggerReaderHaptic();
-      onJumpToPortion(nextIndex);
-    }
-
-    return nextIndex;
   }
 
   function handleSaveAnnotation(event: React.MouseEvent<HTMLButtonElement>) {
@@ -1792,65 +1578,10 @@ export function ReaderScreen({
     }
   }
 
-  function handleProgressPointerDown(event: React.PointerEvent<HTMLDivElement>) {
-    event.preventDefault();
-    event.stopPropagation();
-    if (readAloud.isPlaying) return;
-    if (portionNavigation.items.length === 0 || progressTrackHeight <= 0) {
-      return;
-    }
-
-    const activeItem = portionNavigationItemByIndex.get(activeNavigationIndex);
-    if (!activeItem) {
-      return;
-    }
-
-    progressPointerIdRef.current = event.pointerId;
-    progressDragRef.current = {
-      pointerId: event.pointerId,
-      startY: event.clientY,
-      startItemCenter: activeItem.topPx + activeItem.heightPx / 2,
-      currentIndex: activeNavigationIndex,
-      moved: false
-    };
-    setProgressDragging(true);
-    setProgressDragOffset(0);
-    setProgressTilt(getProgressTilt(event.clientX, event.clientY, 0));
-    event.currentTarget.setPointerCapture(event.pointerId);
-  }
-
-  function handleProgressPointerMove(event: React.PointerEvent<HTMLDivElement>) {
-    if (progressPointerIdRef.current !== event.pointerId || !progressDragRef.current) {
-      return;
-    }
-
-    event.preventDefault();
-    event.stopPropagation();
-    updateProgressDragFromPointer(event);
-  }
-
-  function handleProgressPointerEnd(event: React.PointerEvent<HTMLDivElement>) {
-    if (progressPointerIdRef.current !== event.pointerId) {
-      return;
-    }
-
-    event.preventDefault();
-    event.stopPropagation();
-    updateProgressDragFromPointer(event);
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-    progressPointerIdRef.current = null;
-    progressDragRef.current = null;
-    setProgressDragging(false);
-    setProgressDragOffset(0);
-    setProgressTilt(getNeutralProgressTilt());
-  }
-
   return (
     <div
       ref={containerRef}
-      className={`reader-shell theme-${settings.theme}`}
+      className={`reader-shell theme-${settings.theme} navigator-${requestedSettings.navigatorSide ?? 'right'}`}
       style={{ '--visual-viewport-inset': `${visualViewportInset}px` } as CSSProperties}
     >
       {requestedSettings.backgroundAnimation || settings.theme === 'paperback' ? (
@@ -1915,92 +1646,11 @@ export function ReaderScreen({
         </div>
       </header>
 
-      <aside ref={navigatorRef} className="chapter-progress" aria-label="Reading progress by chapter">
-        <div className="chapter-progress-note-labels">
-          {navigationNoteLabels.map(({ annotation, index, y, count }) => (
-            <button key={annotation.id} type="button" className="chapter-progress-note-label"
-              style={{ top: `${y}px` }} disabled={readAloud.isPlaying || paginationPending}
-              aria-label={`Open note: ${annotation.note}${count > 1 ? ` (${count} nearby notes)` : ''}`}
-              title={annotation.note}
-              onClick={() => { onJumpToPortion(index); handleAnnotationPress(annotation); }}>
-              <BookmarkIcon /><span>{annotation.note}</span>{count > 1 ? <small>+{count - 1}</small> : null}
-            </button>
-          ))}
-        </div>
-        {navigatorExpanded ? (
-          <div className="chapter-progress-labels">
-            {navigationChapterLabels.map((chapter) => (
-              <button key={chapter.sectionId} type="button"
-                className={`chapter-progress-label${chapter.active ? ' active' : ''}`}
-                style={{ top: `${chapter.y}px` }} disabled={readAloud.isPlaying || paginationPending}
-                aria-label={`Go to ${chapter.label}`}
-                onClick={() => { onJumpToPortion(chapter.index); }}>
-                {chapter.label}
-              </button>
-            ))}
-          </div>
-        ) : null}
-        <div
-          ref={progressTrackRef}
-          className={`chapter-progress-track${progressDragging ? ' dragging' : ''}${navigatorExpanded ? ' expanded' : ''}`}
-          aria-disabled={readAloud.isPlaying}
-          onPointerDown={handleProgressPointerDown}
-          onPointerMove={handleProgressPointerMove}
-          onPointerUp={handleProgressPointerEnd}
-          onPointerCancel={handleProgressPointerEnd}
-        >
-          <div
-            className="chapter-progress-strip"
-            style={{
-              height: `${portionNavigation.totalHeightPx}px`,
-              transform: `translateY(${navigationStripOffset}px)`
-            }}
-            aria-hidden="true"
-          >
-            {coverUrl ? (
-              <img className="chapter-progress-cover" src={coverUrl} alt="" draggable={false}
-                style={{ height: `${NAVIGATOR_COVER_HEIGHT_PX}px` }} />
-            ) : null}
-            {Array.from(annotationPortionIndexes).map((index) => {
-              const item = portionNavigationItemByIndex.get(index);
-              if (!item) {
-                return null;
-              }
-
-              return (
-                <div
-                  key={`annotation-marker-${index}`}
-                  className="chapter-progress-annotation"
-                  style={{ top: `${item.topPx + item.heightPx / 2}px` }}
-                />
-              );
-            })}
-            {visibleNavigationItems.map((item) => {
-              const stateClass =
-                item.index === activeNavigationIndex
-                  ? 'active'
-                  : item.index < activeNavigationIndex
-                    ? 'completed'
-                    : 'upcoming';
-              return (
-                <div
-                  key={portions[item.index]?.id ?? `portion-nav-${item.index}`}
-                  className={`chapter-progress-segment ${stateClass}`}
-                  style={{
-                    top: `${item.topPx}px`,
-                    height: `${item.heightPx}px`
-                  }}
-                  title={item.label}
-                />
-              );
-            })}
-          </div>
-          <div
-            className="chapter-progress-marker"
-            aria-hidden="true"
-          />
-        </div>
-      </aside>
+      <BookNavigator key={book.fingerprint} navigatorRef={navigatorRef}
+        portions={portions} annotations={annotations} focusedIndex={focusedPortionIndex} coverUrl={coverUrl}
+        expanded={navigatorExpanded} side={requestedSettings.navigatorSide ?? 'right'}
+        disabled={readAloud.isPlaying || paginationPending} onJump={onJumpToPortion}
+        onNote={handleAnnotationPress} onDragging={setProgressDragging} onTilt={setProgressTilt} />
 
       <main
         ref={stageRef}

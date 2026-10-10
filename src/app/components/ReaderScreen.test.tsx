@@ -74,6 +74,15 @@ afterEach(() => {
 });
 
 describe('reader navigation', () => {
+  it('keeps the menu and navigator open after tapping a chapter label', () => {
+    act(() => container.querySelector<HTMLButtonElement>('[aria-label="Reading tools"]')!.click());
+    act(() => container.querySelector<HTMLButtonElement>('[aria-label="Chapters view"]')!.click());
+    const label = container.querySelector<HTMLButtonElement>('.navigator-chapter-label.visible')!;
+    act(() => { pointer(label, 'pointerdown'); label.click(); });
+    expect(container.querySelector('[aria-label="Reading tools"]')?.getAttribute('aria-expanded')).toBe('true');
+    expect(container.querySelector('[aria-label="Chapters view"]')?.getAttribute('aria-pressed')).toBe('true');
+  });
+
   it.each(['mouse', 'touch'])('does not turn the page when a save gesture falls through to the reader (%s)', (pointerType) => {
     const word = container.querySelector('.portion-pane-current .reader-word')!;
     act(() => pointer(word, 'pointerdown'));

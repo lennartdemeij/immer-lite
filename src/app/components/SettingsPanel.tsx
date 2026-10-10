@@ -113,6 +113,17 @@ export function SettingsPanel({
         </div>
 
         <div className="settings-group">
+          <label className="settings-checkbox">
+            <span>Book navigator</span>
+            <select value={settings.navigatorSide ?? 'right'}
+              onChange={(event) => onChange({ ...settings, navigatorSide: event.target.value as 'left' | 'right' })}>
+              <option value="right">Right</option>
+              <option value="left">Left</option>
+            </select>
+          </label>
+        </div>
+
+        <div className="settings-group">
           <span>Theme</span>
           <div className="theme-picker" role="group" aria-label="Color theme">
             {(['light', 'sepia', 'dark', 'mist', 'sage', 'rose', 'midnight', 'paperback', 'coral'] as const).map((theme) => (

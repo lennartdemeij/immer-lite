@@ -5,6 +5,7 @@ export interface ReaderSettings {
   lineHeight: number;
   horizontalPadding: number;
   theme: ThemeMode;
+  navigatorSide?: 'left' | 'right';
   speechRate?: number;
   speechEngine?: 'built-in' | 'ai';
   hyphenation?: boolean;
