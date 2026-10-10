@@ -10,8 +10,13 @@ vi.mock('../hooks/useReadAloud', () => ({
 }));
 
 const book: CanonicalBook = {
-  id: 'book', fingerprint: 'book', metadata: { title: 'Test book' }, sections: [], toc: [], resources: {},
-  totalBlocks: 0, totalSentences: 0, parseStats: { confidence: 1, diagnostics: [], parsedAt: '', durationMs: 0 }
+  id: 'book', fingerprint: 'book', metadata: { title: 'Test book' },
+  sections: [{ id: 'chapter', index: 0, label: 'Chapter', href: 'chapter.xhtml', matter: 'body',
+    anchorIds: [], localLinks: [], blocks: [{ id: 'paragraph', order: 0, kind: 'paragraph',
+      sectionId: 'chapter', text: 'First word.', inlineContent: [],
+      sentences: [{ id: 'sentence', index: 0, text: 'First word.', inlineIds: [], startOffset: 0, endOffset: 11 }]
+    }] }], toc: [], resources: {},
+  totalBlocks: 1, totalSentences: 1, parseStats: { confidence: 1, diagnostics: [], parsedAt: '', durationMs: 0 }
 };
 const anchor = { blockId: 'paragraph', blockOrder: 0, sentenceIndex: 0, lineOffset: 0 };
 const portion: ReaderPortion = {
@@ -26,21 +31,25 @@ const settings = { fontSize: 20, lineHeight: 1.6, horizontalPadding: 28, theme: 
 let container: HTMLDivElement;
 let root: Root;
 let onNext: ReturnType<typeof vi.fn>;
+let onSaveAnnotation: ReturnType<typeof vi.fn>;
 const captureDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'hasPointerCapture');
+const rangeRectsDescriptor = Object.getOwnPropertyDescriptor(Range.prototype, 'getClientRects');
 
-function pointer(target: Element, type: string) {
+function pointer(target: Element, type: string, pointerType = 'mouse') {
   target.dispatchEvent(Object.assign(new MouseEvent(type, { bubbles: true, clientX: 100, clientY: 200 }),
-    { pointerId: 1, pointerType: 'mouse' }));
+    { pointerId: 1, pointerType }));
 }
 
 beforeEach(() => {
-  vi.useFakeTimers();
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date', 'performance'] });
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
   vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
   Object.defineProperty(HTMLElement.prototype, 'hasPointerCapture', { configurable: true, value: () => false });
+  Object.defineProperty(Range.prototype, 'getClientRects', { configurable: true, value: () => [] });
   window.getSelection()?.removeAllRanges();
   onNext = vi.fn();
+  onSaveAnnotation = vi.fn();
   container = document.createElement('div');
   document.body.append(container);
   root = createRoot(container);
@@ -49,7 +58,7 @@ beforeEach(() => {
     book, portion, previousPortion: null, nextPortion: next, portions: [portion, next], portionCount: 2,
     portionIndex: 0, viewport: null, paginationPending: false, settings, requestedSettings: settings,
     annotations: [], containerRef: null, onNext, onPrevious: vi.fn(), onJumpToPortion: vi.fn(),
-    onSettingsChange: vi.fn(), onFileSelected: vi.fn(), onSaveAnnotation: vi.fn(), onDeleteAnnotation: vi.fn()
+    onSettingsChange: vi.fn(), onFileSelected: vi.fn(), onSaveAnnotation, onDeleteAnnotation: vi.fn()
   })));
 });
 
@@ -58,11 +67,43 @@ afterEach(() => {
   container.remove();
   if (captureDescriptor) Object.defineProperty(HTMLElement.prototype, 'hasPointerCapture', captureDescriptor);
   else Reflect.deleteProperty(HTMLElement.prototype, 'hasPointerCapture');
+  if (rangeRectsDescriptor) Object.defineProperty(Range.prototype, 'getClientRects', rangeRectsDescriptor);
+  else Reflect.deleteProperty(Range.prototype, 'getClientRects');
   vi.unstubAllGlobals();
   vi.useRealTimers();
 });
 
-describe('desktop reader navigation', () => {
+describe('reader navigation', () => {
+  it.each(['mouse', 'touch'])('does not turn the page when a save gesture falls through to the reader (%s)', (pointerType) => {
+    const word = container.querySelector('.portion-pane-current .reader-word')!;
+    act(() => pointer(word, 'pointerdown'));
+    act(() => vi.advanceTimersByTime(350));
+    const range = document.createRange();
+    range.selectNodeContents(word);
+    window.getSelection()!.addRange(range);
+    act(() => pointer(word, 'pointerup'));
+    act(() => vi.advanceTimersByTime(300));
+    const editor = container.querySelector('textarea')!;
+    expect(editor).not.toBeNull();
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(editor, 'My note');
+      editor.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    const save = container.querySelector('.annotation-save-button')!;
+    act(() => { pointer(save, 'pointerdown', pointerType); pointer(save, 'pointerup', pointerType); });
+    act(() => (save as HTMLButtonElement).click());
+    expect(onSaveAnnotation).toHaveBeenCalledOnce();
+    expect(container.querySelector('textarea')).toBeNull();
+    const stage = container.querySelector('main')!;
+    // A delayed/retargeted gesture arrives after the save button disappears.
+    act(() => { pointer(stage, 'pointerdown', pointerType); pointer(stage, 'pointerup', pointerType); });
+    act(() => vi.advanceTimersByTime(1500));
+    expect(onNext).not.toHaveBeenCalled();
+    // The guard expires; a new deliberate tap can still turn the page.
+    act(() => { pointer(stage, 'pointerdown'); pointer(stage, 'pointerup'); });
+    expect(onNext).toHaveBeenCalledOnce();
+  });
+
   it.each(['wheel', 'tap'])('allows %s navigation after holding the mouse without selecting text', (input) => {
     const word = container.querySelector('.portion-pane-current .reader-word')!;
     act(() => pointer(word, 'pointerdown'));

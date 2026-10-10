@@ -109,6 +109,7 @@ const PROGRESS_TILT_MAX_Z_DEG = 7;
 const READER_HAPTIC_MS = 8;
 const LONG_PRESS_MS = 320;
 const SELECTION_SETTLE_MS = 260;
+const NOTE_SAVE_GESTURE_MS = 650;
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
@@ -363,6 +364,7 @@ export function ReaderScreen({
     next: 0
   });
   const pointerState = useRef<PointerState | null>(null);
+  const noteSaveGestureUntilRef = useRef(0);
   const wheelGesture = useRef({ distance: 0, lastAt: 0, blockedUntil: 0 });
   const longPressTimeoutRef = useRef<number | null>(null);
   const longPressEligibleRef = useRef(false);
@@ -1517,11 +1519,21 @@ export function ReaderScreen({
     return nextIndex;
   }
 
-  function handleSaveAnnotation() {
+  function handleSaveAnnotation(event: React.MouseEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    event.stopPropagation();
     if (!selectionDraft || !annotationNote.trim()) {
       return;
     }
 
+    // The editor disappears during this gesture. Ignore delayed/retargeted
+    // pointer events on the reader while the keyboard and sheet close.
+    noteSaveGestureUntilRef.current = performance.now() + NOTE_SAVE_GESTURE_MS;
+    pointerState.current = null;
+    touchSelectionRef.current = null;
+    setTouchSelection(false);
+    longPressTriggeredRef.current = false;
+    clearLongPressTimeout();
     onSaveAnnotation(createTextAnnotation(book, selectionDraft, annotationNote));
     setAnnotationNote('');
     setSelectionDraft(null);
@@ -1555,6 +1567,11 @@ export function ReaderScreen({
   }
 
   function handlePointerDown(event: React.PointerEvent<HTMLElement>) {
+    if (performance.now() < noteSaveGestureUntilRef.current) {
+      pointerState.current = null;
+      event.preventDefault();
+      return;
+    }
     if (touchSelection && event.pointerType !== 'mouse') {
       setSelectionEnabled(false);
       setSelectionDraft(null);
@@ -1674,6 +1691,11 @@ export function ReaderScreen({
   }
 
   function handlePointerEnd(event: React.PointerEvent<HTMLElement>) {
+    if (performance.now() < noteSaveGestureUntilRef.current) {
+      pointerState.current = null;
+      event.preventDefault();
+      return;
+    }
     if (endTouchSelection(event)) return;
     const state = pointerState.current;
     if (!state || state.pointerId !== event.pointerId) {
@@ -2194,6 +2216,12 @@ export function ReaderScreen({
                 type="button"
                 className="annotation-save-button"
                 aria-label="Save note"
+                onPointerDown={(event) => {
+                  // Keep focus (and the button's position) until its click saves.
+                  event.preventDefault();
+                  event.stopPropagation();
+                }}
+                onPointerUp={(event) => event.stopPropagation()}
                 onClick={handleSaveAnnotation}
               >
                 <BookmarkIcon />
