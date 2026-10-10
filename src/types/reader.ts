@@ -12,7 +12,7 @@ export interface ReaderSettings {
   hyphenationLanguage?: string;
   backgroundAnimation?: boolean;
   wordAnimation?: boolean;
-  wordAnimationStyle?: 'cascade' | 'vortex' | 'explosion';
+  wordAnimationStyle?: 'cascade' | 'vortex' | 'explosion' | 'wind';
 }
 
 export interface ViewportMetrics {

@@ -11,6 +11,69 @@ afterEach(() => {
 });
 
 describe('portion word motion', () => {
+  it.each(['forward', 'backward'] as const)('swooshes words around a curved path outside the %s viewport and settles the new portion', direction => {
+    const forward = direction === 'forward';
+    const displacement = forward ? -600 : 600;
+    const stage = document.createElement('main');
+    vi.spyOn(stage, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 100, 800, 600));
+    const panes = ['current', forward ? 'next' : 'previous'].map((role, index) => {
+      const pane = document.createElement('div');
+      pane.className = `portion-pane-${role}`;
+      pane.innerHTML = '<span class="reader-word">wind</span>';
+      vi.spyOn(pane.firstElementChild!, 'getBoundingClientRect').mockReturnValue(new DOMRect(100, 300 - index * displacement, 80, 20));
+      return pane;
+    });
+    const animate = vi.spyOn(HTMLElement.prototype, 'animate').mockReturnValue({ cancel: vi.fn() } as unknown as Animation);
+    const motion = animatePortionWords(panes, displacement, 480, null, { style: 'wind', stage, direction })!;
+    const outgoing = animate.mock.calls[0][0] as Keyframe[];
+    const incoming = animate.mock.calls[1][0] as Keyframe[];
+    const position = (frame: Keyframe) => String(frame.transform).match(/translate3d\(([-\d.]+)px, ([-\d.]+)px/)!;
+    const outY = 310 + displacement + Number(position(outgoing.at(-1)!)[2]);
+    const inY = 310 + Number(position(incoming[0])[2]);
+    expect(forward ? outY < 0 : outY > window.innerHeight).toBe(true);
+    expect(forward ? inY > window.innerHeight : inY < 0).toBe(true);
+    expect(incoming.at(-1)!.transform).toBe('translate3d(0px, 0px, 0) rotate(0deg) scale(1)');
+    // A straight funnel would keep every intermediate x between its endpoints.
+    const xs = outgoing.map(frame => Number(position(frame)[1]));
+    expect(xs.some(x => x > Math.max(xs[0], xs.at(-1)!))).toBe(true);
+    expect(outgoing.every(frame => frame.opacity === undefined)).toBe(true);
+    expect(motion.duration).toBe(720);
+    motion.cancel();
+    expect((panes[0].firstElementChild as HTMLElement).style.willChange).toBe('');
+  });
+
+  it('continues the wind path from the displayed drag pose and restores a cancelled gesture', () => {
+    let now = 0;
+    vi.spyOn(performance, 'now').mockImplementation(() => now);
+    vi.stubGlobal('requestAnimationFrame', () => 1);
+    vi.stubGlobal('cancelAnimationFrame', () => {});
+    const stage = document.createElement('main');
+    vi.spyOn(stage, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 100, 800, 600));
+    const current = document.createElement('div');
+    current.className = 'portion-pane-current';
+    current.innerHTML = '<span class="reader-word">wind</span>';
+    const word = current.firstElementChild as HTMLElement;
+    vi.spyOn(word, 'getBoundingClientRect').mockReturnValue(new DOMRect(100, 300, 80, 20));
+    const options = { style: 'wind' as const, stage, forwardDistance: 600 };
+    const drag = createWordDrag([current], options)!;
+    now = 50;
+    drag.update(-180);
+    const pose = { ...drag.poseFor(word)! };
+    expect(pose.x).not.toBe(0);
+    expect(pose.rotation).not.toBe(0);
+    const animate = vi.spyOn(HTMLElement.prototype, 'animate').mockReturnValue({ cancel: vi.fn() } as unknown as Animation);
+    drag.cancel();
+    const motion = animatePortionWords([current], -420, 480, drag, options)!;
+    const round = (value: number) => Math.round(value * 100) / 100;
+    const frames = animate.mock.calls[0][0] as Keyframe[];
+    expect(frames[0].transform).toContain(`translate3d(${round(pose.x)}px, ${round(pose.y + 420)}px`);
+    motion.cancel();
+    animate.mockClear();
+    animatePortionWords([current], 180, 480, drag, { ...options, rest: true });
+    expect((animate.mock.calls[0][0] as Keyframe[]).at(-1)!.transform).toBe('translate3d(0px, 0px, 0) rotate(0deg) scale(1)');
+    expect(word.style.transform).toBe('');
+  });
+
   it.each(['forward', 'backward'] as const)('grows the %s portion from the same interaction point at a slower pace', (direction) => {
     const stage = document.createElement('main');
     vi.spyOn(stage, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 100, 800, 600));

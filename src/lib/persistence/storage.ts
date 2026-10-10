@@ -35,6 +35,10 @@ export const DEFAULT_SETTINGS: ReaderSettings = {
   backgroundAnimation: false
 };
 
+function migrateSettings(settings: ReaderSettings): ReaderSettings {
+  return (settings.theme as string) === 'mist' ? { ...settings, theme: 'light' } : settings;
+}
+
 export function loadSettings(): ReaderSettings {
   const raw = window.localStorage.getItem(SETTINGS_KEY);
   if (!raw) {
@@ -42,10 +46,10 @@ export function loadSettings(): ReaderSettings {
   }
 
   try {
-    return {
+    return migrateSettings({
       ...DEFAULT_SETTINGS,
       ...JSON.parse(raw)
-    } as ReaderSettings;
+    } as ReaderSettings);
   } catch {
     return DEFAULT_SETTINGS;
   }
@@ -157,7 +161,7 @@ export async function hydratePersistenceCaches(): Promise<{
   ]);
 
   if (settings) {
-    window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+    window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(migrateSettings(settings)));
   }
   if (positions.length > 0) {
     window.localStorage.setItem(POSITION_KEY, JSON.stringify(positions));
@@ -167,7 +171,7 @@ export async function hydratePersistenceCaches(): Promise<{
   }
 
   return {
-    settings: settings ?? loadSettings(),
+    settings: settings ? migrateSettings(settings) : loadSettings(),
     positions,
     annotations
   };

@@ -95,10 +95,11 @@ export function SettingsPanel({
             <label className="settings-checkbox">
               <span>Animation style</span>
               <select value={settings.wordAnimationStyle ?? 'cascade'}
-                onChange={(event) => onChange({ ...settings, wordAnimationStyle: event.target.value as 'cascade' | 'vortex' | 'explosion' })}>
+                onChange={(event) => onChange({ ...settings, wordAnimationStyle: event.target.value as ReaderSettings['wordAnimationStyle'] })}>
                 <option value="cascade">Cascade</option>
                 <option value="vortex">Vortex</option>
                 <option value="explosion">Explosion</option>
+                <option value="wind">Wind</option>
               </select>
             </label>
           ) : null}
@@ -126,7 +127,7 @@ export function SettingsPanel({
         <div className="settings-group">
           <span>Theme</span>
           <div className="theme-picker" role="group" aria-label="Color theme">
-            {(['light', 'sepia', 'dark', 'mist', 'sage', 'rose', 'midnight', 'paperback', 'coral'] as const).map((theme) => (
+            {(['light', 'sepia', 'dark', 'sage', 'rose', 'midnight', 'paperback', 'coral'] as const).map((theme) => (
               <button
                 key={theme}
                 type="button"

@@ -379,12 +379,6 @@ button {
 .theme-preview.theme-paperback .theme-preview-type { font-family: "EB Garamond", Georgia, serif; }
 .theme-preview.theme-paperback .theme-preview-line { background: #d7d72b; }
 
-.theme-mist {
-  --palette-bg: #edf3f7;
-  --palette-text: #223747;
-  --palette-accent: #366d91;
-}
-
 .theme-sage {
   --palette-bg: #eaf1e6;
   --palette-text: #293b2b;
@@ -412,7 +406,7 @@ button {
   --palette-accent: #fff6e8;
 }
 
-:is(.theme-mist, .theme-sage, .theme-rose, .theme-midnight, .theme-coral) {
+:is(.theme-sage, .theme-rose, .theme-midnight, .theme-coral) {
   --reader-panel-bg: var(--palette-bg);
   --app-base-bg: var(--palette-bg);
   --text: var(--palette-text);
@@ -1402,12 +1396,12 @@ button {
   background: rgba(246, 187, 118, 0.42);
 }
 
-:is(.theme-mist, .theme-sage, .theme-rose, .theme-midnight) .annotation-live-rect {
+:is(.theme-sage, .theme-rose, .theme-midnight) .annotation-live-rect {
   background: color-mix(in srgb, var(--accent) 22%, transparent);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent);
 }
 
-:is(.theme-mist, .theme-sage, .theme-rose, .theme-midnight) .touch-selection-overlay .annotation-live-rect {
+:is(.theme-sage, .theme-rose, .theme-midnight) .touch-selection-overlay .annotation-live-rect {
   background: color-mix(in srgb, var(--accent) 36%, transparent);
 }
 

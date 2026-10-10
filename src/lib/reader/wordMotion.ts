@@ -4,9 +4,9 @@ export interface WordMotion {
 }
 
 interface WordPose { x: number; y: number; rotation: number; scale: number }
-interface WordGeometry { x: number; y: number; spin: number; priority: number; burst?: WordPose; growth?: WordPose }
+interface WordGeometry { x: number; y: number; spin: number; priority: number; burst?: WordPose; growth?: WordPose; windProgress?: number }
 interface MotionOptions {
-  style?: 'cascade' | 'vortex' | 'explosion';
+  style?: 'cascade' | 'vortex' | 'explosion' | 'wind';
   stage?: HTMLElement;
   origin?: { x: number; y: number };
   forwardDistance?: number;
@@ -53,6 +53,28 @@ function explosion(g: WordGeometry, bounds: DOMRect, origin: NonNullable<MotionO
   const travel = Math.hypot(bounds.width, bounds.height) * 1.15;
   return { x: nx * travel, y: ny * travel,
     rotation: (nx < 0 ? -1 : 1) * (65 + Math.abs(ny) * 95), scale: 0.75 };
+}
+
+// Rotate the page around a travelling centre, tightening the orbit at the edge.
+// Both pointer motion and sampled WAAPI keyframes use this exact same path.
+function windPose(g: WordGeometry, bounds: DOMRect, progress: number, outgoing: boolean, forward: boolean, restingOffset: number): WordPose {
+  const amount = outgoing ? progress : 1 - progress;
+  const direction = (forward ? 1 : -1) * (outgoing ? 1 : -1);
+  const angle = amount * Math.PI * 1.4 * direction;
+  const sine = Math.sin(angle);
+  const cosine = Math.cos(angle);
+  const centerX = bounds.left + bounds.width / 2;
+  const centerY = bounds.top + bounds.height / 2;
+  const portal = outgoing === forward ? Math.min(0, bounds.top) - 96 : Math.max(window.innerHeight, bounds.bottom) + 96;
+  const dx = g.x - centerX;
+  const dy = g.y + restingOffset - centerY;
+  const radius = 1 - amount;
+  return {
+    x: centerX + (dx * cosine - dy * sine * 0.65) * radius - g.x,
+    y: mix(centerY, portal, amount) + (dx * sine * 0.75 + dy * cosine) * radius - g.y,
+    rotation: amount * 160 * direction,
+    scale: 1 - amount * 0.7
+  };
 }
 
 export interface WordDrag {
@@ -116,7 +138,7 @@ export function createWordDrag(panes: HTMLElement[], options: MotionOptions = {}
           const forward = currentOffset < 0;
           const distance = (forward ? options.forwardDistance : options.backwardDistance) || bounds.height;
           const globalProgress = Math.min(1, Math.max(0, (forward ? -offset : offset) / distance));
-          const priorityDelay = entry.geometry.priority * (origin ? 0.25 : 0.6);
+          const priorityDelay = entry.geometry.priority * (options.style === 'wind' ? 0.12 : origin ? 0.25 : 0.6);
           const progress = Math.max(0, (globalProgress - priorityDelay) / (1 - priorityDelay));
           const lift = progress * (2 - progress);
           const center = bounds.left + bounds.width / 2;
@@ -138,6 +160,12 @@ export function createWordDrag(panes: HTMLElement[], options: MotionOptions = {}
             pose.y = restingOffset + burst.y * spread - currentOffset;
             pose.rotation = burst.rotation * spread;
             pose.scale = mix(1, burst.scale, spread);
+          }
+          if (options.style === 'wind') {
+            g.windProgress = progress;
+            const restingOffset = group.role === 'current' ? 0 : forward ? -distance : distance;
+            Object.assign(pose, windPose(g, bounds, progress, group.role === 'current', forward, restingOffset));
+            pose.y -= currentOffset;
           }
         }
         poses.set(word, pose);
@@ -197,7 +225,8 @@ export function animatePortionWords(
   if (!words.some((group) => group.length) || typeof HTMLElement.prototype.animate !== 'function') return null;
 
   if (options.style === 'explosion') duration *= 2;
-  const stagger = Math.min(duration / 2, Math.max(...words.map((group) => Math.max(0, group.length - 1))) * duration / 120);
+  if (options.style === 'wind') duration *= 1.5;
+  const stagger = Math.min(options.style === 'wind' ? 120 : duration / 2, Math.max(...words.map((group) => Math.max(0, group.length - 1))) * duration / 120);
   const animations: Animation[] = [];
   const hints = new Map<HTMLElement, string>();
   const frames = [{ transform: transform({ ...identity, y: -displacement }) }, { transform: transform(identity) }];
@@ -240,14 +269,28 @@ export function animatePortionWords(
         hints.set(word, word.style.willChange);
         word.style.willChange = 'transform';
         const keyframes: Keyframe[] = [{ transform: transform(start, Boolean(bounds)), offset: 0 }];
-        if (bounds && !origin && !options.rest) {
+        if (bounds && options.style === 'wind' && !options.rest) {
+          const g = geometries[paneIndex][index];
+          const outgoing = role(pane) === 'current';
+          const forward = options.direction ? options.direction === 'forward' : displacement < 0;
+          const progress = dragPose ? g.windProgress ?? 0 : 0;
+          const restingOffset = outgoing ? 0 : totalOffset;
+          for (let step = dragPose ? 1 : 0; step <= 16; step++) {
+            const offset = step / 16;
+            const pose = windPose(g, bounds, mix(progress, 1, offset), outgoing, forward, restingOffset);
+            pose.y -= totalOffset;
+            const keyframe = { offset, transform: transform(pose, true) };
+            if (step === 0) keyframes[0] = keyframe;
+            else keyframes.push(keyframe);
+          }
+        } else if (bounds && !origin && !options.rest) {
           const lift = 0.85 - geometries[paneIndex][index].priority * 0.55;
           keyframes.push({ offset: 0.5, transform: transform({
             x: mix(start.x, end.x, 0.55), y: mix(start.y, end.y, lift),
             rotation: mix(start.rotation, end.rotation, lift), scale: mix(start.scale, end.scale, 0.5)
           }, true) });
         }
-        keyframes.push({ transform: transform(end, Boolean(bounds)), offset: 1 });
+        if (options.style !== 'wind' || !bounds || options.rest) keyframes.push({ transform: transform(end, Boolean(bounds)), offset: 1 });
         animations.push(word.animate(keyframes, {
           duration, delay: bounds ? geometries[paneIndex][index].priority * stagger
             : group.length > 1 ? index / (group.length - 1) * stagger : 0,
