@@ -290,9 +290,9 @@ button {
   inset: 0;
   pointer-events: none;
   background:
-    radial-gradient(ellipse at 58% 38%, rgba(255, 252, 238, 0.24) 12%, transparent 68%),
-    radial-gradient(ellipse at 52% 44%, transparent 42%, rgba(68, 49, 21, 0.19) 100%),
-    linear-gradient(96deg, rgba(61, 44, 20, 0.21), rgba(67, 48, 20, 0.04) 6%, rgba(255, 253, 240, 0.2) 15%, transparent 35%, rgba(73, 55, 27, 0.07) 100%);
+    radial-gradient(ellipse at 58% 35%, rgba(255, 252, 238, 0.34) 12%, transparent 66%),
+    radial-gradient(ellipse at 52% 42%, transparent 36%, rgba(68, 49, 21, 0.29) 100%),
+    linear-gradient(96deg, rgba(61, 44, 20, 0.33), rgba(67, 48, 20, 0.08) 7%, rgba(255, 253, 240, 0.3) 17%, transparent 38%, rgba(73, 55, 27, 0.13) 100%);
 }
 
 .theme-paperback .reader-dust { display: none; }
@@ -300,7 +300,8 @@ button {
 
 .theme-paperback .portion-sheet {
   isolation: isolate;
-  text-shadow: 0.25px 0.15px 0.35px rgba(40, 31, 17, 0.12);
+  color: #332b20;
+  text-shadow: 0.25px 0.2px 0.6px rgba(40, 31, 17, 0.28);
 }
 
 .theme-paperback .portion-sheet::before {
@@ -319,11 +320,11 @@ button {
   inset: 28px 0;
   z-index: -1;
   overflow: hidden;
-  font: 400 var(--paper-font-size)/var(--paper-line-height) "EB Garamond", Georgia, serif;
+  font: 650 var(--paper-font-size)/var(--paper-line-height) "EB Garamond", Georgia, serif;
   color: #463c2b;
-  opacity: 0.11;
+  opacity: 0.12;
   transform: translateY(var(--paper-ink-offset)) scaleX(-1) rotate(var(--paper-ink-angle));
-  filter: blur(0.45px);
+  filter: blur(1.15px);
   pointer-events: none;
   user-select: none;
   -webkit-user-select: none;

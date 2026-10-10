@@ -37,7 +37,7 @@ export function getInlineFont(
     return `500 ${Math.round(baseSize * 0.94)}px ${MONO_FONT_FAMILY}`;
   }
 
-  const weight = marks.includes('bold') || kind === 'heading' ? 650 : 400;
+  const weight = marks.includes('bold') || kind === 'heading' ? 650 : settings.theme === 'paperback' ? 450 : 400;
   const italic = marks.includes('italic') || kind === 'quote';
   const smallCaps = marks.includes('smallcaps');
   if (kind === 'heading' && settings.theme !== 'paperback') {
