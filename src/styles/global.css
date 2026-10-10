@@ -328,10 +328,10 @@ button {
 @supports ((background-clip: text) or (-webkit-background-clip: text)) {
   .paper-ink {
     background-image:
-      linear-gradient(rgba(29, 23, 15, 0.94), rgba(29, 23, 15, 0.94)),
+      linear-gradient(rgba(3, 2, 0, 0.84), rgba(3, 2, 0, 0.84)),
       url('../assets/paperback-paper.webp');
     background-position: var(--paper-x) var(--paper-y);
-    background-size: 180px;
+    background-size: 216px;
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
