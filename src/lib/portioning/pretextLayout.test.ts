@@ -92,7 +92,7 @@ describe('buildRichSlice', () => {
     expect(prepareRichInline).toHaveBeenCalledTimes(1);
     measureTextSlice(block, 0, 1, viewport, { ...settings, theme }, false, false);
     expect(prepareRichInline).toHaveBeenCalledTimes(2);
-    expect(vi.mocked(prepareRichInline).mock.calls.at(-1)?.[0][0].font).toContain(family);
+    expect(vi.mocked(prepareRichInline).mock.calls.at(-1)?.[0][0]).toHaveProperty('font', expect.stringContaining(family));
     measureTextSlice(block, 0, 1, viewport, settings, false, false);
     expect(prepareRichInline).toHaveBeenCalledTimes(3);
   });
@@ -157,6 +157,23 @@ describe('buildRichSlice', () => {
 
     expect(slice.items.map((item) => item.text)).toEqual(['certain', ' sacrality']);
     expect(slice.meta[1]?.blockStart).toBe(7);
+  });
+
+  it('uses source offsets when rich-inline cursors belong to the joined paragraph', () => {
+    const block = makeBlock();
+    block.inlineContent[0].startOffset = 0;
+    block.inlineContent[1].startOffset = 14;
+    const slice = buildRichSlice(block, 0, 2, settings);
+    const lines = restoreCollapsedSpacesForRender([{ fragments: [
+      { itemIndex: 0, gapBefore: 0, text: 'Sentence one.', sourceStart: 0,
+        start: { segmentIndex: 0, graphemeIndex: 0 } },
+      { itemIndex: 1, gapBefore: 8, text: 'Sentence two.', sourceStart: 1,
+        start: { segmentIndex: 4, graphemeIndex: 0 } }
+    ] }], slice);
+    expect(lines[0].fragments.map(fragment => fragment.text).join('')).toBe('Sentence one. Sentence two.');
+    for (const fragment of lines[0].fragments) {
+      expect(block.text.slice(fragment.blockStart, fragment.blockEnd)).toBe(fragment.text);
+    }
   });
 
   it('restores collapsed spaces between fragments on the same rendered line', () => {

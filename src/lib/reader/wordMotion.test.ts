@@ -11,6 +11,25 @@ afterEach(() => {
 });
 
 describe('portion word motion', () => {
+  it('reads viewport geometry once instead of between individual word transforms', () => {
+    let now = 0;
+    vi.spyOn(performance, 'now').mockImplementation(() => now);
+    vi.stubGlobal('requestAnimationFrame', () => 1);
+    vi.stubGlobal('cancelAnimationFrame', () => {});
+    const stage = document.createElement('main');
+    vi.spyOn(stage, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 100, 800, 600));
+    const pane = document.createElement('div');
+    pane.className = 'portion-pane-next';
+    pane.innerHTML = '<span class="reader-word">first</span><span class="reader-word">second</span>';
+    const height = vi.spyOn(window, 'innerHeight', 'get');
+    const drag = createWordDrag([pane], { style: 'wind', stage, forwardDistance: 600 })!;
+    height.mockClear();
+    now = 50;
+    drag.update(-180);
+    expect(height).not.toHaveBeenCalled();
+    drag.cancel();
+  });
+
   it.each(['forward', 'backward'] as const)('swooshes words around a curved path outside the %s viewport and settles the new portion', direction => {
     const forward = direction === 'forward';
     const displacement = forward ? -600 : 600;

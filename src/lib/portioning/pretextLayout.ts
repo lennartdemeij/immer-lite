@@ -38,6 +38,7 @@ interface MaterializedRichFragment {
   itemIndex: number;
   gapBefore: number;
   text: string;
+  sourceStart?: number;
   start: {
     segmentIndex: number;
     graphemeIndex: number;
@@ -226,7 +227,11 @@ export function buildRichSlice(
 }
 
 function fragmentStartsItemBoundary(fragment: MaterializedRichFragment): boolean {
-  return fragment.start.segmentIndex === 0 && fragment.start.graphemeIndex === 0;
+  // Unreleased Pretext cursors describe the joined paragraph. Use source
+  // offsets to detect an item's leading collapsed space instead.
+  return fragment.sourceStart !== undefined
+    ? fragment.sourceStart <= 1
+    : fragment.start.segmentIndex === 0 && fragment.start.graphemeIndex === 0;
 }
 
 function itemHasCollapsedLeadingSpace(
@@ -249,7 +254,10 @@ export function restoreCollapsedSpacesForRender(
       const meta = slice.meta[fragment.itemIndex];
       const item = slice.items[fragment.itemIndex];
       let text = fragment.text;
-      const localCursor = itemTextOffsets.get(fragment.itemIndex) ?? 0;
+      const leadingSpace = fragmentStartsItemBoundary(fragment) && itemHasCollapsedLeadingSpace(item);
+      const localCursor = fragment.sourceStart === undefined
+        ? itemTextOffsets.get(fragment.itemIndex) ?? 0
+        : fragment.sourceStart - (leadingSpace || typeof meta?.leadingSpaceOffset === 'number' ? 1 : 0);
       let blockStart =
         typeof meta?.blockStart === 'number' ? meta.blockStart + localCursor : undefined;
       let blockEnd =
@@ -389,6 +397,7 @@ function materializeLines(
         itemIndex: fragment.itemIndex,
         gapBefore: fragment.gapBefore,
         text: fragment.text,
+        sourceStart: fragment.sourceStart,
         start: fragment.start
       }))
     });

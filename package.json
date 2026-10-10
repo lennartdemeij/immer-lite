@@ -11,7 +11,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@chenglou/pretext": "^0.0.9",
+    "@chenglou/pretext": "file:vendor/chenglou-pretext-0.0.10-dev.1bbe835f9d.tgz",
     "@huggingface/transformers": "^3.8.1",
     "hyphen": "^1.14.1",
     "jszip": "^3.10.1",

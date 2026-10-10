@@ -36,16 +36,17 @@ const captureDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype,
 const setCaptureDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'setPointerCapture');
 const rangeRectsDescriptor = Object.getOwnPropertyDescriptor(Range.prototype, 'getClientRects');
 
-function pointer(target: Element, type: string, pointerType = 'mouse') {
-  target.dispatchEvent(Object.assign(new MouseEvent(type, { bubbles: true, clientX: 100, clientY: 200 }),
+function pointer(target: Element, type: string, pointerType = 'mouse', clientY = 200) {
+  target.dispatchEvent(Object.assign(new MouseEvent(type, { bubbles: true, clientX: 100, clientY }),
     { pointerId: 1, pointerType }));
 }
 
-function renderReader(annotations: TextAnnotation[] = []) {
+function renderReader(annotations: TextAnnotation[] = [], index = 0) {
   const next = { ...portion, id: 'next', index: 1 };
   act(() => root.render(createElement(ReaderScreen, {
-    book, portion, previousPortion: null, nextPortion: next, portions: [portion, next], portionCount: 2,
-    portionIndex: 0, viewport: null, paginationPending: false, settings, requestedSettings: settings,
+    book, portion: index === 0 ? portion : next, previousPortion: index === 0 ? null : portion,
+    nextPortion: index === 0 ? next : null, portions: [portion, next], portionCount: 2,
+    portionIndex: index, viewport: null, paginationPending: false, settings, requestedSettings: settings,
     annotations, containerRef: null, onNext, onPrevious: vi.fn(), onJumpToPortion: vi.fn(),
     onSettingsChange: vi.fn(), onFileSelected: vi.fn(), onSaveAnnotation, onDeleteAnnotation: vi.fn()
   })));
@@ -82,6 +83,25 @@ afterEach(() => {
 });
 
 describe('reader navigation', () => {
+  it('reuses the prepared neighbor word elements when turning a portion', () => {
+    const nextWord = container.querySelector('.portion-pane-next .reader-word');
+    expect(nextWord).not.toBeNull();
+    renderReader([], 1);
+    expect(container.querySelector('.portion-pane-current .reader-word')).toBe(nextWord);
+  });
+
+  it('does not rebuild unchanged word markup on each drag frame', () => {
+    const tokenize = vi.spyOn(String.prototype, 'matchAll');
+    const stage = container.querySelector('main')!;
+    act(() => pointer(stage, 'pointerdown'));
+    act(() => pointer(stage, 'pointermove', 'mouse', 160));
+    tokenize.mockClear();
+    act(() => pointer(stage, 'pointermove', 'mouse', 140));
+    act(() => vi.advanceTimersByTime(20));
+    expect(tokenize).not.toHaveBeenCalled();
+    tokenize.mockRestore();
+  });
+
   it.each(['mouse', 'touch'])('keeps the navigator open after tapping its rail (%s)', pointerType => {
     const rail = container.querySelector('.navigator-rail-hitarea')!;
     act(() => pointer(rail, 'pointerdown', pointerType));

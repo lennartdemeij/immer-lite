@@ -18,12 +18,30 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   if (animateDescriptor) Object.defineProperty(HTMLElement.prototype, 'animate', animateDescriptor);
   else Reflect.deleteProperty(HTMLElement.prototype, 'animate');
   vi.unstubAllGlobals();
 });
 
 describe('paper parallax', () => {
+  it('does not read computed styles during consecutive drag frames', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const root = createRoot(container);
+    const render = (offset: number) => act(() => root.render(<ReaderBackground portionIndex={0}
+      dragOffset={offset} isDragging snapDirection={null} transitionEnabled={false} paginationPending={false} />));
+    render(-10);
+    const read = vi.spyOn(window, 'getComputedStyle');
+    render(-20);
+    render(-30);
+    expect(read).not.toHaveBeenCalled();
+    const transform = container.querySelector<HTMLElement>('.reader-dust-near')!.style.transform;
+    expect(Number(transform.match(/translateY\(([-\d.]+)px\)/)![1])).toBeCloseTo(-4.2);
+    act(() => root.unmount());
+    container.remove();
+  });
+
   it('follows the drag, trails the page turn and reverses without exposing an edge', () => {
     const container = document.createElement('div');
     document.body.append(container);

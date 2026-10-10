@@ -57,7 +57,7 @@ function explosion(g: WordGeometry, bounds: DOMRect, origin: NonNullable<MotionO
 
 // Rotate the page around a travelling centre, tightening the orbit at the edge.
 // Both pointer motion and sampled WAAPI keyframes use this exact same path.
-function windPose(g: WordGeometry, bounds: DOMRect, progress: number, outgoing: boolean, forward: boolean, restingOffset: number): WordPose {
+function windPose(g: WordGeometry, bounds: DOMRect, progress: number, outgoing: boolean, forward: boolean, restingOffset: number, viewportHeight: number): WordPose {
   const amount = outgoing ? progress : 1 - progress;
   const direction = (forward ? 1 : -1) * (outgoing ? 1 : -1);
   const angle = amount * Math.PI * 1.4 * direction;
@@ -65,7 +65,7 @@ function windPose(g: WordGeometry, bounds: DOMRect, progress: number, outgoing: 
   const cosine = Math.cos(angle);
   const centerX = bounds.left + bounds.width / 2;
   const centerY = bounds.top + bounds.height / 2;
-  const portal = outgoing === forward ? Math.min(0, bounds.top) - 96 : Math.max(window.innerHeight, bounds.bottom) + 96;
+  const portal = outgoing === forward ? Math.min(0, bounds.top) - 96 : Math.max(viewportHeight, bounds.bottom) + 96;
   const dx = g.x - centerX;
   const dy = g.y + restingOffset - centerY;
   const radius = 1 - amount;
@@ -78,6 +78,9 @@ function windPose(g: WordGeometry, bounds: DOMRect, progress: number, outgoing: 
 }
 
 export interface WordDrag {
+  bounds?: DOMRect;
+  viewportHeight: number;
+  wordsFor: (pane: HTMLElement) => HTMLElement[] | undefined;
   update: (offset: number) => void;
   offsetFor: (word: HTMLElement) => number;
   cancel: () => void;
@@ -90,11 +93,14 @@ export interface WordDrag {
 // No text measurements or React renders are needed for the trailing frames.
 export function createWordDrag(panes: HTMLElement[], options: MotionOptions = {}): WordDrag | null {
   const bounds = options.style && options.style !== 'cascade' ? options.stage?.getBoundingClientRect() : undefined;
+  const viewportHeight = options.style === 'wind' ? window.innerHeight : 0;
   const origin = bounds && options.style === 'explosion'
     ? options.origin ?? { x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2 } : undefined;
   // Batch geometry reads before touching any styles; reuse them when releasing.
+  const paneWords = new Map<HTMLElement, HTMLElement[]>();
   const groups = panes.map((pane) => {
     const words = Array.from(pane.querySelectorAll<HTMLElement>('.reader-word'));
+    paneWords.set(pane, words);
     const stagger = Math.min(120, Math.max(0, words.length - 1) * 2);
     const entries = words.map((word, index) => ({ word, original: word.style.transform,
       originalHint: word.style.willChange, lastTransform: '', promoted: false,
@@ -164,7 +170,7 @@ export function createWordDrag(panes: HTMLElement[], options: MotionOptions = {}
           if (options.style === 'wind') {
             g.windProgress = progress;
             const restingOffset = group.role === 'current' ? 0 : forward ? -distance : distance;
-            Object.assign(pose, windPose(g, bounds, progress, group.role === 'current', forward, restingOffset));
+            Object.assign(pose, windPose(g, bounds, progress, group.role === 'current', forward, restingOffset, viewportHeight));
             pose.y -= currentOffset;
           }
         }
@@ -190,6 +196,7 @@ export function createWordDrag(panes: HTMLElement[], options: MotionOptions = {}
   }
 
   return {
+    bounds, viewportHeight, wordsFor: pane => paneWords.get(pane),
     update(offset) {
       if (frame !== null) cancelAnimationFrame(frame);
       frame = null;
@@ -221,7 +228,7 @@ export function createWordDrag(panes: HTMLElement[], options: MotionOptions = {}
 export function animatePortionWords(
   panes: HTMLElement[], displacement: number, duration: number, drag?: WordDrag | null, options: MotionOptions = {}
 ): WordMotion | null {
-  const words = panes.map((pane) => Array.from(pane.querySelectorAll<HTMLElement>('.reader-word')));
+  const words = panes.map((pane) => drag?.wordsFor(pane) ?? Array.from(pane.querySelectorAll<HTMLElement>('.reader-word')));
   if (!words.some((group) => group.length) || typeof HTMLElement.prototype.animate !== 'function') return null;
 
   if (options.style === 'explosion') duration *= 2;
@@ -230,7 +237,8 @@ export function animatePortionWords(
   const animations: Animation[] = [];
   const hints = new Map<HTMLElement, string>();
   const frames = [{ transform: transform({ ...identity, y: -displacement }) }, { transform: transform(identity) }];
-  const bounds = options.style && options.style !== 'cascade' ? options.stage?.getBoundingClientRect() : undefined;
+  const bounds = drag?.bounds ?? (options.style && options.style !== 'cascade' ? options.stage?.getBoundingClientRect() : undefined);
+  const viewportHeight = drag?.viewportHeight ?? (options.style === 'wind' ? window.innerHeight : 0);
   const origin = bounds && options.style === 'explosion'
     ? options.origin ?? { x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2 } : undefined;
   const totalOffset = displacement + (drag?.currentOffset() ?? 0);
@@ -277,7 +285,7 @@ export function animatePortionWords(
           const restingOffset = outgoing ? 0 : totalOffset;
           for (let step = dragPose ? 1 : 0; step <= 16; step++) {
             const offset = step / 16;
-            const pose = windPose(g, bounds, mix(progress, 1, offset), outgoing, forward, restingOffset);
+            const pose = windPose(g, bounds, mix(progress, 1, offset), outgoing, forward, restingOffset, viewportHeight);
             pose.y -= totalOffset;
             const keyframe = { offset, transform: transform(pose, true) };
             if (step === 0) keyframes[0] = keyframe;

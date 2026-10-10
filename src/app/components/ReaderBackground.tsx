@@ -23,6 +23,7 @@ export function ReaderBackground({ portionIndex, paginationPending, dragOffset, 
   const root = useRef<HTMLDivElement>(null);
   const animations = useRef<(Animation | null)[]>([]);
   const bases = useRef([0, 0, 0]);
+  const offsets = useRef([0, 0, 0]);
   const previous = useRef({ portionIndex, dragOffset, isDragging, snapDirection });
 
   useLayoutEffect(() => {
@@ -54,13 +55,18 @@ export function ReaderBackground({ portionIndex, paginationPending, dragOffset, 
     const settled = last.snapDirection !== null && snapDirection === null;
     const changed = portionIndex !== last.portionIndex && !paginationPending;
     const starting = (isDragging || snapDirection !== null) && !last.isDragging && last.snapDirection === null;
+    if (!settled && !changed && !starting && !isDragging && !transitionEnabled) return;
     const direction = settled
       ? last.snapDirection === 'forward' ? -1 : 1
       : changed ? Math.sign(last.portionIndex - portionIndex) : 0;
 
-    Array.from(root.current?.children ?? []).forEach((child, index) => {
-      const layer = child as HTMLElement;
-      const measured = new DOMMatrixReadOnly(getComputedStyle(layer).transform).m42;
+    const layers = Array.from(root.current?.children ?? []) as HTMLElement[];
+    // Only sample a running animation when interrupting it. Drag frames already
+    // know their offsets; reading styles here would flush every word transform.
+    const measuredOffsets = layers.map((layer, index) => animations.current[index]?.playState === 'running'
+      ? new DOMMatrixReadOnly(getComputedStyle(layer).transform).m42 : offsets.current[index]);
+    layers.forEach((layer, index) => {
+      const measured = measuredOffsets[index];
       const current = normalizeOffset(measured);
       bases.current[index] -= measured - current;
       if (starting || (changed && !settled)) bases.current[index] = normalizeOffset(current);
@@ -82,6 +88,7 @@ export function ReaderBackground({ portionIndex, paginationPending, dragOffset, 
       animations.current[index]?.cancel();
       // Rebase by whole tiles so both directions stay covered indefinitely.
       layer.style.transform = `translateY(${target}px)`;
+      offsets.current[index] = target;
       animations.current[index] = duration ? layer.animate([
         { transform: `translateY(${current}px)` },
         { transform: `translateY(${target}px)` }

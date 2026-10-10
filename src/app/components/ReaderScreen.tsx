@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import type { CanonicalBook } from '../../types/book';
 import type {
@@ -343,6 +343,7 @@ export function ReaderScreen({
   const [annotationNote, setAnnotationNote] = useState('');
   const [activeAnnotation, setActiveAnnotation] = useState<TextAnnotation | null>(null);
   const [activeAnnotationRects, setActiveAnnotationRects] = useState<ReaderRectSnapshot[]>([]);
+  const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
   const [sheetHeights, setSheetHeights] = useState({
     previous: 0,
     current: 0,
@@ -409,18 +410,18 @@ export function ReaderScreen({
     }
   }
 
-  function clearSelectionFinalizeTimeout() {
+  const clearSelectionFinalizeTimeout = useCallback(() => {
     if (selectionFinalizeTimeoutRef.current !== null) {
       window.clearTimeout(selectionFinalizeTimeoutRef.current);
       selectionFinalizeTimeoutRef.current = null;
     }
-  }
+  }, []);
 
-  function clearDomSelection() {
+  const clearDomSelection = useCallback(() => {
     window.getSelection()?.removeAllRanges();
     touchSelectionRef.current = null;
     setTouchSelection(false);
-  }
+  }, []);
 
   function updateTouchSelection() {
     const state = touchSelectionRef.current;
@@ -550,7 +551,7 @@ export function ReaderScreen({
 
   function animateToNeighbor(direction: SnapDirection) {
     if (readAloud.isPlaying) return;
-    const stageHeight = stageRef.current?.clientHeight ?? 0;
+    const stageHeight = stageSize.height;
     if (stageHeight <= 0) {
       if (settleHapticPendingRef.current) {
         settleHapticPendingRef.current = false;
@@ -947,6 +948,9 @@ export function ReaderScreen({
   // so the new text never appears centered using the previous page's height.
   useLayoutEffect(() => {
     const measure = () => {
+      const width = stageRef.current?.clientWidth ?? 0;
+      const height = stageRef.current?.clientHeight ?? 0;
+      setStageSize(current => current.width === width && current.height === height ? current : { width, height });
       const readHeight = (pane: HTMLDivElement | null) =>
         pane?.querySelector<HTMLElement>('.portion-sheet')?.getBoundingClientRect().height ?? 0;
 
@@ -967,6 +971,7 @@ export function ReaderScreen({
 
     measure();
     const observer = new ResizeObserver(() => measure());
+    if (stageRef.current) observer.observe(stageRef.current);
     [previousPaneRef.current, currentPaneRef.current, nextPaneRef.current].forEach((pane) => {
       const sheet = pane?.querySelector<HTMLElement>('.portion-sheet');
       if (sheet) {
@@ -987,7 +992,7 @@ export function ReaderScreen({
   ]);
 
   const coverUrl = book.metadata.coverImageHref ? book.resources[book.metadata.coverImageHref]?.objectUrl : undefined;
-  const stageHeight = stageRef.current?.clientHeight ?? 0;
+  const stageHeight = stageSize.height;
   const fallbackSheetHeight = viewport
     ? viewport.contentHeight + READER_CHROME.portionEdgePadding * 2
     : stageHeight;
@@ -1093,7 +1098,7 @@ export function ReaderScreen({
   ]);
   const annotationsByBlock = useMemo(() => groupAnnotationsByBlock(annotations), [annotations]);
   const continuationStyles = useMemo(() => {
-    const stageWidth = stageRef.current?.clientWidth ?? viewport?.width ?? 0;
+    const stageWidth = stageSize.width || viewport?.width || 0;
     if (stageHeight <= 0 || stageWidth <= 0 || !portion) {
       return {
         incomingCurrent: null,
@@ -1289,6 +1294,7 @@ export function ReaderScreen({
     backwardProgress,
     snapDirection,
     stageHeight,
+    stageSize.width,
     transitionEnabled,
     viewport
   ]);
@@ -1328,13 +1334,18 @@ export function ReaderScreen({
     clearDomSelection();
   }
 
-  function handleAnnotationPress(annotation: TextAnnotation) {
+  const handleAnnotationPress = useCallback((annotation: TextAnnotation) => {
     setActiveAnnotation(annotation);
     setSelectionDraft(null);
     setSelectionEnabled(false);
     clearSelectionFinalizeTimeout();
     clearDomSelection();
-  }
+  }, [clearSelectionFinalizeTimeout, clearDomSelection]);
+
+  const openNavigator = useCallback(() => {
+    setToolsOpen(true);
+    setSearchOpen(false); setSettingsOpen(false); setReadAloudOpen(false);
+  }, []);
 
   function selectSearchResult(result: BookSearchResult) {
     if (readAloud.isPlaying || paginationPending) return;
@@ -1650,10 +1661,7 @@ export function ReaderScreen({
         portions={portions} annotations={annotations} focusedIndex={focusedPortionIndex} coverUrl={coverUrl}
         expanded={navigatorExpanded} side={requestedSettings.navigatorSide ?? 'right'}
         disabled={readAloud.isPlaying || paginationPending} onJump={onJumpToPortion}
-        onNote={handleAnnotationPress} onOpen={() => {
-          setToolsOpen(true);
-          setSearchOpen(false); setSettingsOpen(false); setReadAloudOpen(false);
-        }} onDragging={setProgressDragging} onTilt={setProgressTilt} />
+        onNote={handleAnnotationPress} onOpen={openNavigator} onDragging={setProgressDragging} onTilt={setProgressTilt} />
 
       <main
         ref={stageRef}
@@ -1727,6 +1735,7 @@ export function ReaderScreen({
         >
           <div
             ref={previousPaneRef}
+            key={previousPortion?.id ?? 'previous-empty'}
             className="portion-pane portion-pane-previous"
             aria-hidden="true"
             style={{
@@ -1740,12 +1749,15 @@ export function ReaderScreen({
                 portion={previousPortion}
                 settings={settings}
                 annotationsByBlock={annotationsByBlock}
+                onAnnotationPress={handleAnnotationPress}
+                hideLeadingBoundarySceneBreak={hasSceneBreakBoundary(portions[portionIndex - 2] ?? null, previousPortion)}
                 hideTrailingBoundarySceneBreak={endsWithSceneBreak(previousPortion)}
               />
             ) : null}
           </div>
           <div
             ref={currentPaneRef}
+            key={portion?.id ?? 'current-empty'}
             className={`portion-pane portion-pane-current${selectionEnabled && !touchSelection ? ' selection-enabled' : ''}`}
             onContextMenu={(event) => event.preventDefault()}
             style={{
@@ -1826,6 +1838,7 @@ export function ReaderScreen({
           </div>
           <div
             ref={nextPaneRef}
+            key={nextPortion?.id ?? 'next-empty'}
             className="portion-pane portion-pane-next"
             aria-hidden="true"
             style={{
@@ -1839,7 +1852,9 @@ export function ReaderScreen({
                 portion={nextPortion}
                 settings={settings}
                 annotationsByBlock={annotationsByBlock}
+                onAnnotationPress={handleAnnotationPress}
                 hideLeadingBoundarySceneBreak={hasSceneBreakBoundary(portion, nextPortion)}
+                hideTrailingBoundarySceneBreak={endsWithSceneBreak(nextPortion)}
               />
             ) : null}
           </div>

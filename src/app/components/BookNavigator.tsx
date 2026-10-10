@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent, RefObject } from 'react';
 import type { ReaderPortion, TextAnnotation } from '../../types/reader';
 import { createTextPortionIndex, findTextPortionIndex } from '../../lib/reader/search';
@@ -27,7 +27,7 @@ const modes: Array<{ mode: NavigatorMode; label: string; path: string }> = [
   { mode: 'notes', label: 'Notes', path: 'M6 3h12v18l-6-4-6 4z' }
 ];
 
-export function BookNavigator({ portions, annotations, focusedIndex, coverUrl, expanded, side, disabled,
+export const BookNavigator = memo(function BookNavigator({ portions, annotations, focusedIndex, coverUrl, expanded, side, disabled,
   navigatorRef, onJump, onNote, onOpen, onDragging, onTilt }: BookNavigatorProps) {
   const [selectedMode, setSelectedMode] = useState<NavigatorMode>('portions');
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -187,4 +187,4 @@ export function BookNavigator({ portions, annotations, focusedIndex, coverUrl, e
       </div>
     </aside>
   );
-}
+});
