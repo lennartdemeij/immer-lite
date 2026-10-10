@@ -12,7 +12,7 @@ const note = (id: string, index: number, startOffset = 0) => ({ index, annotatio
 describe('navigator zoom layouts', () => {
   it('fits the complete book and cover without dropping portions or chapter boundaries', () => {
     const layout = layoutNavigator(chapters, [], 'book', 600, true);
-    expect(layout.height).toBeCloseTo(600);
+    expect(layout.height).toBeLessThanOrEqual(540);
     expect(layout.groups[1].top).toBeGreaterThan(layout.groups[0].top + layout.groups[0].height);
     for (const index of [0, 450, 899, 900, 909, 910, 999]) {
       const y = navigatorPosition(layout.groups, index, 'book');

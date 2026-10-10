@@ -2,7 +2,7 @@ import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CanonicalBook } from '../../types/book';
-import type { ReaderPortion } from '../../types/reader';
+import type { ReaderPortion, TextAnnotation } from '../../types/reader';
 import { ReaderScreen } from './ReaderScreen';
 
 vi.mock('../hooks/useReadAloud', () => ({
@@ -40,6 +40,16 @@ function pointer(target: Element, type: string, pointerType = 'mouse') {
     { pointerId: 1, pointerType }));
 }
 
+function renderReader(annotations: TextAnnotation[] = []) {
+  const next = { ...portion, id: 'next', index: 1 };
+  act(() => root.render(createElement(ReaderScreen, {
+    book, portion, previousPortion: null, nextPortion: next, portions: [portion, next], portionCount: 2,
+    portionIndex: 0, viewport: null, paginationPending: false, settings, requestedSettings: settings,
+    annotations, containerRef: null, onNext, onPrevious: vi.fn(), onJumpToPortion: vi.fn(),
+    onSettingsChange: vi.fn(), onFileSelected: vi.fn(), onSaveAnnotation, onDeleteAnnotation: vi.fn()
+  })));
+}
+
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date', 'performance'] });
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
@@ -53,13 +63,7 @@ beforeEach(() => {
   container = document.createElement('div');
   document.body.append(container);
   root = createRoot(container);
-  const next = { ...portion, id: 'next', index: 1 };
-  act(() => root.render(createElement(ReaderScreen, {
-    book, portion, previousPortion: null, nextPortion: next, portions: [portion, next], portionCount: 2,
-    portionIndex: 0, viewport: null, paginationPending: false, settings, requestedSettings: settings,
-    annotations: [], containerRef: null, onNext, onPrevious: vi.fn(), onJumpToPortion: vi.fn(),
-    onSettingsChange: vi.fn(), onFileSelected: vi.fn(), onSaveAnnotation, onDeleteAnnotation: vi.fn()
-  })));
+  renderReader();
 });
 
 afterEach(() => {
@@ -74,6 +78,22 @@ afterEach(() => {
 });
 
 describe('reader navigation', () => {
+  it('keeps the navigator open while viewing and switching notes', () => {
+    renderReader([0, 1].map(index => ({ id: `note-${index}`, fingerprint: 'book', blockId: 'paragraph',
+      blockOrder: 0, sentenceIndex: 0, startOffset: index, endOffset: index + 5,
+      selectedText: 'First', note: `Note ${index}`, createdAt: '', updatedAt: '' })));
+    act(() => container.querySelector<HTMLButtonElement>('[aria-label="Reading tools"]')!.click());
+    act(() => container.querySelector<HTMLButtonElement>('[aria-label="Notes view"]')!.click());
+    act(() => container.querySelector<HTMLButtonElement>('[aria-label="Open note: Note 0"]')!.click());
+    const viewer = container.querySelector('.annotation-sheet-viewer')!;
+    act(() => pointer(viewer.querySelector('button')!, 'pointerdown'));
+    expect(container.querySelector('[aria-label="Reading tools"]')?.getAttribute('aria-expanded')).toBe('true');
+    const nextNote = container.querySelector<HTMLButtonElement>('[aria-label="Open note: Note 1"]')!;
+    act(() => { pointer(nextNote, 'pointerdown'); nextNote.click(); });
+    expect(container.querySelector('.annotation-note-copy')?.textContent).toBe('Note 1');
+    expect(container.querySelector('[aria-label="Notes view"]')?.getAttribute('aria-pressed')).toBe('true');
+  });
+
   it('keeps the menu and navigator open after tapping a chapter label', () => {
     act(() => container.querySelector<HTMLButtonElement>('[aria-label="Reading tools"]')!.click());
     act(() => container.querySelector<HTMLButtonElement>('[aria-label="Chapters view"]')!.click());

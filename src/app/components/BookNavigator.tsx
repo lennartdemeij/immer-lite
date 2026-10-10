@@ -120,14 +120,14 @@ export function BookNavigator({ portions, annotations, focusedIndex, coverUrl, e
     const prioritized = [...layout.groups].sort((a, b) => Number(b === activeChapter) - Number(a === activeChapter));
     prioritized.forEach(group => {
       const y = mode === 'portions' && group === activeChapter ? position : group.top + group.height / 2;
-      if (mode === 'chapters' || (y + offset >= (mode === 'portions' ? 144 : 18) && y + offset < height - 18 &&
+      if (mode === 'chapters' || (y + offset >= (mode === 'portions' ? 80 : 18) && y + offset < height - (mode === 'portions' ? 88 : 18) &&
         chapterLabels.every(label => Math.abs(label.y - y) >= 40))) chapterLabels.push({ id: group.id, y });
     });
   }
   const noteLabels: Array<{ id: string; y: number }> = [];
   if (mode === 'notes' || mode === 'portions') {
     layout.groups.flatMap(group => group.notes).forEach(note => {
-      const y = [note.y, note.y + 34, note.y - 34].find(y => mode === 'notes' || (y + offset >= 144 && y + offset < height - 16 &&
+      const y = [note.y, note.y + 34, note.y - 34].find(y => mode === 'notes' || (y + offset >= 80 && y + offset < height - 88 &&
         chapterLabels.every(label => Math.abs(label.y - y) >= 34) && noteLabels.every(label => Math.abs(label.y - y) >= 32)));
       if (y != null) noteLabels.push({ id: note.annotation.id, y });
     });

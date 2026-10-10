@@ -742,7 +742,7 @@ export function ReaderScreen({
     const close = (event: PointerEvent) => {
       const target = event.target as Node | null;
       if (!target || toolsRef.current?.contains(target) || navigatorRef.current?.contains(target) || searchPanelRef.current?.contains(target)
-        || settingsPanelRef.current?.contains(target) || readAloudPanelRef.current?.contains(target)) return;
+        || settingsPanelRef.current?.contains(target) || readAloudPanelRef.current?.contains(target) || annotationSheetRef.current?.contains(target)) return;
       setToolsOpen(false);
       setSearchOpen(false);
     };
@@ -1581,7 +1581,7 @@ export function ReaderScreen({
   return (
     <div
       ref={containerRef}
-      className={`reader-shell theme-${settings.theme} navigator-${requestedSettings.navigatorSide ?? 'right'}`}
+      className={`reader-shell theme-${settings.theme} navigator-${requestedSettings.navigatorSide ?? 'right'}${activeAnnotation && navigatorExpanded ? ' navigator-viewing-note' : ''}`}
       style={{ '--visual-viewport-inset': `${visualViewportInset}px` } as CSSProperties}
     >
       {requestedSettings.backgroundAnimation || settings.theme === 'paperback' ? (
@@ -1892,9 +1892,10 @@ export function ReaderScreen({
 
       {activeAnnotation ? (
         <div
+          ref={annotationSheetRef}
           className="annotation-sheet annotation-sheet-viewer"
           role="dialog"
-          aria-modal="true"
+          aria-modal={!navigatorExpanded}
           aria-label="Annotation"
         >
           <div className="annotation-sheet-inner">

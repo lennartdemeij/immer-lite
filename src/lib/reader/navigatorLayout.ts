@@ -31,7 +31,7 @@ export function layoutNavigator(
   const coverHeight = hasCover && mode !== 'notes' ? 56 : 0;
   const sortedNotes = [...notes].sort((a, b) => a.index - b.index || a.annotation.startOffset - b.annotation.startOffset);
   const count = chapters.at(-1)?.end != null ? chapters.at(-1)!.end + 1 : 0;
-  const space = Math.max(1, viewportHeight - coverHeight);
+  const space = Math.max(1, viewportHeight * (mode === 'book' ? 0.9 : 1) - coverHeight);
   const gap = mode === 'book' ? Math.min(3, space / Math.max(1, chapters.length * 4)) : mode === 'notes' ? 12 : 3;
   const bookHeight = Math.max(0, space - gap * Math.max(0, chapters.length - 1));
   let top = coverHeight;
