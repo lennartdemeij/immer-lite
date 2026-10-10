@@ -22,7 +22,7 @@ describe('book navigator controls', () => {
     const onJump = vi.fn();
     const onNote = vi.fn();
     act(() => root.render(createElement(BookNavigator, { portions, annotations, focusedIndex: 0, expanded: true,
-      side: 'left', disabled: false, navigatorRef: createRef<HTMLElement>(), onJump, onNote, onOpen: vi.fn(), onDragging: vi.fn(), onTilt: vi.fn() })));
+      side: 'left', disabled: false, navigatorRef: createRef<HTMLElement>(), onJump, onNote, onOpen: vi.fn(), onDismiss: vi.fn(), onDragging: vi.fn(), onTilt: vi.fn() })));
     const notes = container.querySelector<HTMLButtonElement>('[aria-label="Notes view"]')!;
     act(() => notes.click());
     expect(onJump).not.toHaveBeenCalled();

@@ -4,6 +4,7 @@ import type { CanonicalBook } from '../../types/book';
 import type {
   AnnotationSelection,
   PortionBlock,
+  ReaderAnchor,
   ReaderRectSnapshot,
   ReaderPortion,
   ReaderSettings,
@@ -31,6 +32,7 @@ import {
 import { createAnnotationRange, readAnnotationSelection, readTouchWord } from '../../lib/annotations/domSelection';
 import { BookNavigator } from './BookNavigator';
 import { animatePortionWords, createWordDrag, type WordDrag, type WordMotion } from '../../lib/reader/wordMotion';
+import { findPortionIndexForAnchor } from '../../lib/portioning/paginateBook';
 
 interface ReaderScreenProps {
   book: CanonicalBook;
@@ -322,7 +324,12 @@ export function ReaderScreen({
   const wordOriginRef = useRef<{ x: number; y: number }>();
   const [progressDragging, setProgressDragging] = useState(false);
   const navigatorExpanded = progressDragging || toolsOpen;
+  const [navigatorOrigin, setNavigatorOrigin] = useState<{ fingerprint: string; anchor: ReaderAnchor } | null>(null);
+  const returnPortionIndex = useMemo(() => navigatorOrigin?.fingerprint === book.fingerprint
+    ? findPortionIndexForAnchor(portions, navigatorOrigin.anchor) : null, [navigatorOrigin, book.fingerprint, portions]);
+  const canReturnToReading = returnPortionIndex !== null && returnPortionIndex !== portionIndex;
   const navigatorRef = useRef<HTMLElement>(null);
+  const navigatorDismissRef = useRef<HTMLButtonElement>(null);
   const [progressTilt, setProgressTilt] = useState<ProgressTilt>({
     rotateY: 0,
     rotateZ: 0,
@@ -742,7 +749,7 @@ export function ReaderScreen({
     if (!toolsOpen && !searchOpen && !settingsOpen && !readAloudOpen) return;
     const close = (event: PointerEvent) => {
       const target = event.target as Node | null;
-      if (!target || toolsRef.current?.contains(target) || navigatorRef.current?.contains(target) || searchPanelRef.current?.contains(target)
+      if (!target || toolsRef.current?.contains(target) || navigatorRef.current?.contains(target) || navigatorDismissRef.current?.contains(target) || searchPanelRef.current?.contains(target)
         || settingsPanelRef.current?.contains(target) || readAloudPanelRef.current?.contains(target) || annotationSheetRef.current?.contains(target)) return;
       setToolsOpen(false);
       setSearchOpen(false);
@@ -768,6 +775,7 @@ export function ReaderScreen({
     setSearchMatch(null);
     setSearchOpen(false);
     setToolsOpen(false);
+    setNavigatorOrigin(null);
   }, [book.id]);
 
   useEffect(() => {
@@ -1347,6 +1355,27 @@ export function ReaderScreen({
     setSearchOpen(false); setSettingsOpen(false); setReadAloudOpen(false);
   }, []);
 
+  const dismissNavigator = useCallback(() => {
+    setToolsOpen(false);
+    setSearchOpen(false);
+    setActiveAnnotation(null);
+  }, []);
+
+  const handleNavigatorJump = useCallback((index: number) => {
+    if (readAloud.isPlaying || paginationPending) return;
+    if (portion && index !== portionIndex) {
+      setNavigatorOrigin(origin => origin ?? { fingerprint: book.fingerprint, anchor: portion.start });
+    }
+    onJumpToPortion(index);
+  }, [book.fingerprint, portion, portionIndex, readAloud.isPlaying, paginationPending, onJumpToPortion]);
+
+  function returnToReading() {
+    if (returnPortionIndex === null || readAloud.isPlaying || paginationPending) return;
+    onJumpToPortion(returnPortionIndex);
+    setNavigatorOrigin(null);
+    dismissNavigator();
+  }
+
   function selectSearchResult(result: BookSearchResult) {
     if (readAloud.isPlaying || paginationPending) return;
     const index = findTextPortionIndex(textPortionIndex, result.blockId, result.startOffset);
@@ -1592,7 +1621,7 @@ export function ReaderScreen({
   return (
     <div
       ref={containerRef}
-      className={`reader-shell theme-${settings.theme} navigator-${requestedSettings.navigatorSide ?? 'right'}${activeAnnotation && navigatorExpanded ? ' navigator-viewing-note' : ''}`}
+      className={`reader-shell theme-${settings.theme} navigator-${requestedSettings.navigatorSide ?? 'right'}${canReturnToReading ? ' has-navigator-return' : ''}${activeAnnotation && navigatorExpanded ? ' navigator-viewing-note' : ''}`}
       style={{ '--visual-viewport-inset': `${visualViewportInset}px` } as CSSProperties}
     >
       {requestedSettings.backgroundAnimation || settings.theme === 'paperback' ? (
@@ -1657,11 +1686,21 @@ export function ReaderScreen({
         </div>
       </header>
 
+      {navigatorExpanded ? <button ref={navigatorDismissRef} type="button" className="navigator-dismiss" aria-label="Close book navigator"
+        onClick={dismissNavigator} /> : null}
+      {canReturnToReading ? <button type="button" className="reader-get-back"
+        aria-label="Get back to your reading position" disabled={readAloud.isPlaying || paginationPending}
+        onClick={returnToReading}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="m9 7-5 5 5 5M4 12h10a6 6 0 0 1 0 12" transform="translate(0 -3)" />
+        </svg>
+        <span>Get back</span>
+      </button> : null}
       <BookNavigator key={book.fingerprint} navigatorRef={navigatorRef}
         portions={portions} annotations={annotations} focusedIndex={focusedPortionIndex} coverUrl={coverUrl}
         expanded={navigatorExpanded} side={requestedSettings.navigatorSide ?? 'right'}
-        disabled={readAloud.isPlaying || paginationPending} onJump={onJumpToPortion}
-        onNote={handleAnnotationPress} onOpen={openNavigator} onDragging={setProgressDragging} onTilt={setProgressTilt} />
+        disabled={readAloud.isPlaying || paginationPending} onJump={handleNavigatorJump}
+        onNote={handleAnnotationPress} onOpen={openNavigator} onDismiss={dismissNavigator} onDragging={setProgressDragging} onTilt={setProgressTilt} />
 
       <main
         ref={stageRef}
@@ -1904,7 +1943,7 @@ export function ReaderScreen({
           type="button"
           className="annotation-sheet-backdrop"
           aria-label="Close annotation"
-          onClick={() => setActiveAnnotation(null)}
+          onClick={dismissNavigator}
         />
       ) : null}
 

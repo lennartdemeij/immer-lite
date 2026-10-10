@@ -32,6 +32,7 @@ let container: HTMLDivElement;
 let root: Root;
 let onNext: ReturnType<typeof vi.fn>;
 let onSaveAnnotation: ReturnType<typeof vi.fn>;
+let onJumpToPortion: ReturnType<typeof vi.fn>;
 const captureDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'hasPointerCapture');
 const setCaptureDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'setPointerCapture');
 const rangeRectsDescriptor = Object.getOwnPropertyDescriptor(Range.prototype, 'getClientRects');
@@ -41,13 +42,17 @@ function pointer(target: Element, type: string, pointerType = 'mouse', clientY =
     { pointerId: 1, pointerType }));
 }
 
-function renderReader(annotations: TextAnnotation[] = [], index = 0) {
-  const next = { ...portion, id: 'next', index: 1 };
+function renderReader(annotations: TextAnnotation[] = [], index = 0, count = 2) {
+  const next = { ...portion, id: 'next', index: 1,
+    start: { ...anchor, sentenceIndex: 1 }, end: { ...anchor, sentenceIndex: 1 } };
+  const third = { ...next, id: 'third', index: 2, sectionId: 'chapter-two', sectionLabel: 'Chapter two',
+    start: { ...anchor, sentenceIndex: 2 }, end: { ...anchor, sentenceIndex: 2 } };
+  const portions = count === 3 ? [portion, next, third] : [portion, next];
   act(() => root.render(createElement(ReaderScreen, {
-    book, portion: index === 0 ? portion : next, previousPortion: index === 0 ? null : portion,
-    nextPortion: index === 0 ? next : null, portions: [portion, next], portionCount: 2,
+    book, portion: portions[index], previousPortion: portions[index - 1] ?? null,
+    nextPortion: portions[index + 1] ?? null, portions, portionCount: portions.length,
     portionIndex: index, viewport: null, paginationPending: false, settings, requestedSettings: settings,
-    annotations, containerRef: null, onNext, onPrevious: vi.fn(), onJumpToPortion: vi.fn(),
+    annotations, containerRef: null, onNext, onPrevious: vi.fn(), onJumpToPortion,
     onSettingsChange: vi.fn(), onFileSelected: vi.fn(), onSaveAnnotation, onDeleteAnnotation: vi.fn()
   })));
 }
@@ -63,6 +68,7 @@ beforeEach(() => {
   window.getSelection()?.removeAllRanges();
   onNext = vi.fn();
   onSaveAnnotation = vi.fn();
+  onJumpToPortion = vi.fn();
   container = document.createElement('div');
   document.body.append(container);
   root = createRoot(container);
@@ -83,6 +89,41 @@ afterEach(() => {
 });
 
 describe('reader navigation', () => {
+  it('returns to the first reading position after exploring navigator labels', () => {
+    renderReader([], 1, 3);
+    act(() => container.querySelector<HTMLButtonElement>('[aria-label="Reading tools"]')!.click());
+    act(() => container.querySelector<HTMLButtonElement>('[aria-label="Chapters view"]')!.click());
+    const jump = () => act(() => container.querySelector<HTMLButtonElement>('[aria-label="Go to Chapter"]')!.click());
+    jump();
+    expect(onJumpToPortion).toHaveBeenLastCalledWith(0);
+    renderReader([], 0, 3);
+    expect(container.querySelector('.reader-get-back')).not.toBeNull();
+    act(() => container.querySelector<HTMLButtonElement>('[aria-label="Go to Chapter two"]')!.click());
+    expect(onJumpToPortion).toHaveBeenLastCalledWith(2);
+    renderReader([], 2, 3);
+    act(() => container.querySelector<HTMLButtonElement>('.reader-get-back')!.click());
+    expect(onJumpToPortion).toHaveBeenLastCalledWith(1);
+    expect(container.querySelector('.reader-get-back')).toBeNull();
+    expect(container.querySelector('.book-navigator.expanded')).toBeNull();
+  });
+
+  it('dismisses the notes navigator by tapping its empty scroll area', () => {
+    act(() => container.querySelector<HTMLButtonElement>('[aria-label="Reading tools"]')!.click());
+    act(() => container.querySelector<HTMLButtonElement>('[aria-label="Notes view"]')!.click());
+    act(() => container.querySelector<HTMLDivElement>('.navigator-viewport')!.click());
+    expect(container.querySelector('.book-navigator.expanded')).toBeNull();
+    expect(onNext).not.toHaveBeenCalled();
+  });
+
+  it('dismisses the navigator over the reader without also turning a portion', () => {
+    act(() => container.querySelector<HTMLButtonElement>('[aria-label="Reading tools"]')!.click());
+    const dismiss = container.querySelector<HTMLButtonElement>('[aria-label="Close book navigator"]');
+    expect(dismiss).not.toBeNull();
+    act(() => { pointer(dismiss!, 'pointerdown'); pointer(dismiss!, 'pointerup'); dismiss!.click(); });
+    expect(container.querySelector('.book-navigator.expanded')).toBeNull();
+    expect(onNext).not.toHaveBeenCalled();
+  });
+
   it('reuses the prepared neighbor word elements when turning a portion', () => {
     const nextWord = container.querySelector('.portion-pane-next .reader-word');
     expect(nextWord).not.toBeNull();

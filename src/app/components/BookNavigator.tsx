@@ -16,6 +16,7 @@ interface BookNavigatorProps {
   onJump: (index: number) => void;
   onNote: (annotation: TextAnnotation) => void;
   onOpen: () => void;
+  onDismiss: () => void;
   onDragging: (dragging: boolean) => void;
   onTilt: (tilt: { rotateY: number; rotateZ: number; originY: number }) => void;
 }
@@ -28,7 +29,7 @@ const modes: Array<{ mode: NavigatorMode; label: string; path: string }> = [
 ];
 
 export const BookNavigator = memo(function BookNavigator({ portions, annotations, focusedIndex, coverUrl, expanded, side, disabled,
-  navigatorRef, onJump, onNote, onOpen, onDragging, onTilt }: BookNavigatorProps) {
+  navigatorRef, onJump, onNote, onOpen, onDismiss, onDragging, onTilt }: BookNavigatorProps) {
   const [selectedMode, setSelectedMode] = useState<NavigatorMode>('portions');
   const viewportRef = useRef<HTMLDivElement>(null);
   const [height, setHeight] = useState(0);
@@ -150,7 +151,10 @@ export const BookNavigator = memo(function BookNavigator({ portions, annotations
       </div> : null}
       <div className="navigator-rail-hitarea" aria-disabled={disabled} onPointerDown={pointerDown}
         onPointerMove={pointerMove} onPointerUp={pointerEnd} onPointerCancel={pointerEnd} />
-      <div ref={viewportRef} className={`navigator-viewport${scrollable ? ' scrollable' : ''}`}>
+      <div ref={viewportRef} className={`navigator-viewport${scrollable ? ' scrollable' : ''}`}
+        onClick={event => {
+          if (expanded && !(event.target as Element).closest('button')) onDismiss();
+        }}>
         <div className="navigator-content" style={{ height: `${layout.height}px`, transform: `translateY(${offset}px)` }}>
           {coverUrl ? <img src={coverUrl} alt="" draggable={false} className="navigator-cover"
             style={{ opacity: expanded && mode !== 'notes' ? 1 : 0 }} /> : null}
