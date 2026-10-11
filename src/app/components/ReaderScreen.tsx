@@ -309,7 +309,7 @@ export function ReaderScreen({
   const readAloudPanelRef = useRef<HTMLElement>(null);
   const readAloudButtonRef = useRef<HTMLButtonElement>(null);
   const readAloud = useReadAloud({
-    book, portion, nextPortion, rate: requestedSettings.speechRate ?? 1, engine: requestedSettings.speechEngine ?? 'built-in',
+    book, portion, nextPortion, portions, portionIndex, rate: requestedSettings.speechRate ?? 1, engine: requestedSettings.speechEngine ?? 'built-in',
     canGoNext: Boolean(nextPortion), paginationPending, onNext
   });
   const [spokenWordRects, setSpokenWordRects] = useState<ReaderRectSnapshot[]>([]);

@@ -25,16 +25,26 @@ it('shares pending and completed recordings instead of generating them again on 
   expect(worker.postMessage).toHaveBeenCalledOnce();
 });
 
-it('bounds the rolling audio cache to four sentences', async () => {
-  for (let id = 1; id <= 5; id++) {
+it('bounds the rolling audio cache to the current sentence and six upcoming sentences', async () => {
+  for (let id = 1; id <= 8; id++) {
     const recording = speech.generate(`Sentence ${id}.`, 'am_echo', 1);
     complete(id);
     await recording;
   }
   const oldest = speech.generate('Sentence 1.', 'am_echo', 1);
-  expect(worker.postMessage).toHaveBeenCalledTimes(6);
-  complete(6);
+  expect(worker.postMessage).toHaveBeenCalledTimes(9);
+  complete(9);
   await oldest;
+});
+
+it('keeps all six prefetched sentences available when playback reaches them', async () => {
+  const recordings = Array.from({ length: 7 }, (_, index) => speech.generate(`Sentence ${index}.`, 'am_echo', 1));
+  recordings.forEach((_, index) => complete(index + 1));
+  await Promise.all(recordings);
+  for (let index = 1; index < 7; index++) {
+    expect(speech.generate(`Sentence ${index}.`, 'am_echo', 1)).toBe(recordings[index]);
+  }
+  expect(worker.postMessage).toHaveBeenCalledTimes(7);
 });
 
 it('does not reuse a recording generated at another speed', async () => {

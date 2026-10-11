@@ -1,3 +1,5 @@
+export const AI_SPEECH_LOOKAHEAD = 6;
+
 export interface SpeechAudio {
   samples: Float32Array<ArrayBuffer>;
   sampleRate: number;
@@ -82,7 +84,7 @@ export class KokoroSpeech {
     }).catch((error) => { this.cache.delete(key); throw error; });
     this.cache.set(key, result);
     // Keep only a few sentences, never the entire book's audio.
-    if (this.cache.size > 4) this.cache.delete(this.cache.keys().next().value!);
+    if (this.cache.size > AI_SPEECH_LOOKAHEAD + 1) this.cache.delete(this.cache.keys().next().value!);
     return result;
   }
 

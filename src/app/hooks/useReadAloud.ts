@@ -2,12 +2,14 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CanonicalBook } from '../../types/book';
 import type { ReaderPortion } from '../../types/reader';
 import { estimateWordDurations, getSpeechChunks, type SpeechChunk, type SpokenWord } from '../../lib/reader/speechContent';
-import { KokoroSpeech, type SpeechAudio } from '../../lib/reader/kokoroSpeech';
+import { AI_SPEECH_LOOKAHEAD, KokoroSpeech, type SpeechAudio } from '../../lib/reader/kokoroSpeech';
 
 interface ReadAloudOptions {
   book: CanonicalBook;
   portion: ReaderPortion | null;
   nextPortion?: ReaderPortion | null;
+  portions?: ReaderPortion[];
+  portionIndex?: number;
   rate: number;
   engine?: 'built-in' | 'ai';
   canGoNext: boolean;
@@ -23,8 +25,23 @@ export function useReadAloud(options: ReadAloudOptions) {
     ? typeof window !== 'undefined' && 'Worker' in window && 'AudioContext' in window && aiLanguageSupported
     : builtInSupported;
   const chunks = useMemo(() => getSpeechChunks(options.book, options.portion), [options.book, options.portion]);
-  const nextChunks = useMemo(() => engine === 'ai' ? getSpeechChunks(options.book, options.nextPortion ?? null) : [],
-    [options.book, options.nextPortion, engine]);
+  const nextChunks = useMemo(() => {
+    if (engine !== 'ai') return [];
+    const future: ReaderPortion[] = [];
+    if (options.portions && options.portionIndex !== undefined) {
+      for (let index = options.portionIndex + 1;
+        index < options.portions.length && future.length < AI_SPEECH_LOOKAHEAD; index++) {
+        const portion = options.portions[index];
+        if (portion.blocks.some(block => block.type === 'text')) future.push(portion);
+      }
+    } else if (options.nextPortion) {
+      future.push(options.nextPortion);
+    }
+    if (!future.length) return [];
+    // Preserve each portion's exact fragments so playback reuses its prefetched recording.
+    return getSpeechChunks(options.book, { ...future[0], blocks: future.flatMap(portion => portion.blocks) })
+      .slice(0, AI_SPEECH_LOOKAHEAD);
+  }, [options.book, options.portions, options.portionIndex, options.nextPortion, engine]);
   const key = JSON.stringify(chunks);
   const latest = useRef({ ...options, chunks, nextChunks, key });
   latest.current = { ...options, chunks, nextChunks, key };
@@ -112,8 +129,15 @@ export function useReadAloud(options: ReadAloudOptions) {
       // Reuse the same recording after a pause; don't infer a new sentence suffix.
       const recording = speech.generate(chunk.text, voice, speed);
       // Queue ahead immediately, including across portions, instead of waiting for playback.
-      const ahead = [...state.chunks.slice(state.chunk + 1), ...latest.current.nextChunks].slice(0, 3);
-      ahead.forEach((next) => { void speech.generate(next.text, voice, speed).catch(() => {}); });
+      let bufferedMs = 0;
+      let queued = 0;
+      for (const next of [...state.chunks.slice(state.chunk + 1), ...latest.current.nextChunks]) {
+        // At least three sentences; short sentences need a wider window to cover pauses.
+        if (queued >= AI_SPEECH_LOOKAHEAD || (queued >= 3 && bufferedMs >= 20_000)) break;
+        void speech.generate(next.text, voice, speed).catch(() => {});
+        bufferedMs += estimateWordDurations(next, 0, speed).reduce((sum, duration) => sum + duration, 0);
+        queued += 1;
+      }
       let audio: SpeechAudio | undefined = await recording;
       if (!current()) return;
       const allWeights = estimateWordDurations(chunk, 0, 1);

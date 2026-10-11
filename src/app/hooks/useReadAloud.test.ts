@@ -10,6 +10,7 @@ const ai = vi.hoisted(() => ({
   unlock: vi.fn(), generate: vi.fn(), play: vi.fn(), cancel: vi.fn(), dispose: vi.fn()
 }));
 vi.mock('../../lib/reader/kokoroSpeech', () => ({
+  AI_SPEECH_LOOKAHEAD: 6,
   KokoroSpeech: vi.fn(function () { return ai; })
 }));
 
@@ -38,6 +39,25 @@ function page(start: number, end: number): ReaderPortion {
       lines: [{ key: 'line', fragments: [{ key: 'f', text: text.slice(start, end), font: '', marks: [], blockStart: start, blockEnd: end }] }]
     }]
   };
+}
+function sentencePages(sentences: string[]) {
+  const fullText = sentences.join(' ');
+  let offset = 0;
+  const ranges = sentences.map((sentence, index) => {
+    const startOffset = offset;
+    offset += sentence.length + 1;
+    return { id: `sentence-${index}`, index, text: sentence, inlineIds: ['inline'], startOffset, endOffset: offset - 1 };
+  });
+  const customBook: CanonicalBook = { ...book, totalSentences: sentences.length,
+    sections: [{ ...book.sections[0], blocks: [{ ...block, text: fullText,
+      inlineContent: [{ id: 'inline', text: fullText, marks: [] }], sentences: ranges }] }] };
+  const portions = ranges.map(range => {
+    const portion = page(range.startOffset, range.endOffset);
+    const slice = portion.blocks[0];
+    if (slice.type === 'text') slice.lines[0].fragments[0].text = range.text;
+    return portion;
+  });
+  return { customBook, portions };
 }
 class FakeUtterance {
   lang = '';
@@ -96,6 +116,32 @@ afterEach(() => {
 });
 
 describe('read aloud', () => {
+  it('prepares six short sentences across portions, skipping empty pages, without delaying Play', async () => {
+    const sentences = ['First.', 'Second.', 'Third.', 'Fourth.', 'Fifth.', 'Sixth.', 'Seventh.', 'Eighth.'];
+    const { customBook, portions } = sentencePages(sentences);
+    const empty = { ...page(0, 0), id: 'empty', blocks: [] };
+    const allPortions = [portions[0], empty, ...portions.slice(1)];
+    render({ engine: 'ai', book: customBook, portion: portions[0], nextPortion: empty,
+      portions: allPortions, portionIndex: 0, canGoNext: true });
+    await act(async () => result.toggle());
+    expect(ai.generate.mock.calls.map(call => call[0])).toEqual(sentences.slice(0, 7));
+    expect(ai.play).toHaveBeenCalledOnce();
+    render({ portion: portions[1], nextPortion: portions[2], portionIndex: 2 });
+    await act(async () => {});
+    expect(ai.generate).toHaveBeenCalledWith('Eighth.', 'am_echo', 1);
+  });
+
+  it('limits long-sentence lookahead to three when they already cover twenty seconds', async () => {
+    const sentences = Array.from({ length: 8 }, (_, index) =>
+      `Sentence ${index} contains many wonderful words to fill the upcoming audio buffer comfortably with enough speech to last a little longer.`);
+    const { customBook, portions } = sentencePages(sentences);
+    render({ engine: 'ai', book: customBook, portion: portions[0], nextPortion: portions[1],
+      portions, portionIndex: 0, canGoNext: true });
+    await act(async () => result.toggle());
+    expect(ai.generate.mock.calls.map(call => call[0])).toEqual(sentences.slice(0, 4));
+    expect(ai.play).toHaveBeenCalledOnce();
+  });
+
   it('plays streamed pieces as they arrive while highlighting the whole sentence', async () => {
     let finish!: (audio: object) => void;
     const next = new Promise(resolve => { finish = resolve; });
