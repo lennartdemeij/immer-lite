@@ -49,6 +49,10 @@ function getRangeClientRects(range: Range, container: HTMLElement): ReaderRectSn
     textRange.setEnd(node, range.endContainer === node ? range.endOffset : node.textContent?.length ?? 0);
     return textRange.collapsed ? [] : Array.from(textRange.getClientRects());
   }).filter((rect) => rect.width > 0 && rect.height > 0);
+  return normalizeLineRects(rects, containerRect);
+}
+
+function normalizeLineRects(rects: DOMRect[], containerRect: DOMRect): ReaderRectSnapshot[] {
   const lines: DOMRect[] = [];
   for (const rect of rects) {
     const line = lines.find((candidate) =>
@@ -96,7 +100,7 @@ export function measureAnnotationRectSnapshots(
     blockElement.querySelectorAll<HTMLElement>('[data-block-start][data-block-end]')
   ).filter(isLeafOffsetElement);
 
-  const snapshots: ReaderRectSnapshot[] = [];
+  const rects: DOMRect[] = [];
 
   for (const candidate of candidates) {
     const start = Number(candidate.dataset.blockStart);
@@ -125,8 +129,9 @@ export function measureAnnotationRectSnapshots(
     const range = document.createRange();
     range.setStart(textNode, localStart);
     range.setEnd(textNode, localEnd);
-    snapshots.push(...getRangeClientRects(range, container));
+    rects.push(...Array.from(range.getClientRects()).filter(rect => rect.width > 0 && rect.height > 0));
   }
 
-  return snapshots;
+  // Merge across all word fragments, not separately inside each word range.
+  return normalizeLineRects(rects, container.getBoundingClientRect());
 }

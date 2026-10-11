@@ -92,7 +92,7 @@ button {
 }
 
 .reader-shell {
-  --reading-mark-opacity: 0.18;
+  --reading-mark-opacity: 0.24;
   --reading-selection-opacity: 0.26;
   --reading-sentence-opacity: 0.1;
   --reading-word-opacity: 0.3;
@@ -195,7 +195,7 @@ button {
   --loading-progress-rail: rgba(222, 222, 232, 0.82);
   --loading-progress-stroke: rgba(109, 85, 255, 0.12);
   --loading-progress-glow: rgba(109, 85, 255, 0.14);
-  --annotation-backdrop: rgba(28, 24, 52, 0.2);
+  --annotation-backdrop: rgba(28, 24, 52, 0.12);
   --annotation-book-bg: rgba(248, 247, 255, 0.78);
   --annotation-book-border: rgba(109, 85, 255, 0.12);
   --annotation-note-bg: linear-gradient(135deg, rgba(109, 85, 255, 0.14), rgba(255, 255, 255, 0.96));
@@ -223,7 +223,7 @@ button {
   --loading-progress-rail: rgba(93, 73, 48, 0.16);
   --loading-progress-stroke: rgba(167, 79, 43, 0.14);
   --loading-progress-glow: rgba(167, 79, 43, 0.12);
-  --annotation-backdrop: rgba(42, 27, 16, 0.2);
+  --annotation-backdrop: rgba(42, 27, 16, 0.12);
   --annotation-book-bg: rgba(255, 246, 229, 0.62);
   --annotation-book-border: rgba(167, 79, 43, 0.14);
   --annotation-note-bg: linear-gradient(135deg, rgba(167, 79, 43, 0.14), rgba(251, 242, 226, 0.94));
@@ -236,6 +236,7 @@ button {
 
 .theme-dark {
   --reading-highlight-rgb: 246 187 118;
+  --reading-mark-opacity: 0.26;
   --reading-selection-opacity: 0.24;
   --reader-panel-bg: #171a1f;
   color-scheme: dark;
@@ -256,7 +257,7 @@ button {
   --loading-progress-rail: rgba(255, 255, 255, 0.06);
   --loading-progress-stroke: rgba(255, 255, 255, 0.04);
   --loading-progress-glow: rgba(240, 165, 92, 0.1);
-  --annotation-backdrop: rgba(0, 0, 0, 0.42);
+  --annotation-backdrop: rgba(0, 0, 0, 0.24);
   --annotation-book-bg: rgba(255, 255, 255, 0.04);
   --annotation-book-border: rgba(255, 255, 255, 0.1);
   --annotation-note-bg: linear-gradient(135deg, rgba(240, 165, 92, 0.16), rgba(23, 26, 31, 0.94));
@@ -289,7 +290,7 @@ button {
   --loading-progress-rail: var(--navigator-upcoming);
   --loading-progress-stroke: var(--stroke);
   --loading-progress-glow: var(--loading-skeleton-base);
-  --annotation-backdrop: rgba(44, 35, 19, 0.24);
+  --annotation-backdrop: rgba(44, 35, 19, 0.16);
   --annotation-book-bg: var(--surface);
   --annotation-book-border: var(--stroke);
   --annotation-note-bg: var(--surface-strong);
@@ -412,6 +413,7 @@ button {
 
 .theme-midnight {
   --reading-highlight-rgb: 170 188 255;
+  --reading-mark-opacity: 0.26;
   --reading-selection-opacity: 0.24;
   color-scheme: dark;
   --palette-bg: #141c30;
@@ -421,7 +423,7 @@ button {
 
 .theme-coral {
   --reading-highlight-rgb: 75 25 29;
-  --reading-mark-opacity: 0.3;
+  --reading-mark-opacity: 0.55;
   --reading-selection-opacity: 0.4;
   --reading-sentence-opacity: 0.2;
   --reading-word-opacity: 0.52;
@@ -450,7 +452,7 @@ button {
   --loading-progress-rail: var(--navigator-upcoming);
   --loading-progress-stroke: var(--stroke);
   --loading-progress-glow: var(--loading-skeleton-base);
-  --annotation-backdrop: color-mix(in srgb, var(--text) 20%, transparent);
+  --annotation-backdrop: color-mix(in srgb, var(--text) 12%, transparent);
   --annotation-book-bg: var(--surface);
   --annotation-book-border: var(--stroke);
   --annotation-note-bg: var(--surface-strong);
@@ -459,7 +461,7 @@ button {
 }
 
 .theme-midnight {
-  --annotation-backdrop: rgba(0, 0, 0, 0.42);
+  --annotation-backdrop: rgba(0, 0, 0, 0.24);
   --shadow: 0 28px 60px rgba(0, 0, 0, 0.28);
 }
 
@@ -467,7 +469,7 @@ button {
   --muted: #fff7f2;
   --surface: #ac5047;
   --surface-strong: #a64b42;
-  --annotation-backdrop: rgba(49, 17, 13, 0.4);
+  --annotation-backdrop: rgba(49, 17, 13, 0.2);
   --shadow: 0 18px 48px rgba(66, 23, 18, 0.22);
   accent-color: var(--accent);
   caret-color: var(--text);
