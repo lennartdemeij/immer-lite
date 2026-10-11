@@ -96,6 +96,54 @@ afterEach(() => {
 });
 
 describe('read aloud', () => {
+  it('plays streamed pieces as they arrive while highlighting the whole sentence', async () => {
+    let finish!: (audio: object) => void;
+    const next = new Promise(resolve => { finish = resolve; });
+    ai.generate.mockResolvedValue({ samples: new Float32Array(24000), sampleRate: 24000,
+      charStart: 0, charEnd: 16, next });
+    render({ engine: 'ai' });
+    await act(async () => result.toggle());
+    expect(ai.play).toHaveBeenCalledOnce();
+    expect(result.spokenSentence).toEqual({ blockId: block.id, startOffset: 0, endOffset: 22 });
+    await act(async () => ai.play.mock.calls[0][2]());
+    expect(result.isPlaying).toBe(true);
+    await act(async () => finish({ samples: new Float32Array(24000), sampleRate: 24000, charStart: 16, charEnd: 22 }));
+    expect(ai.play).toHaveBeenCalledTimes(2);
+    expect(result.spokenWord?.startOffset).toBe(16);
+    expect(result.spokenSentence).toEqual({ blockId: block.id, startOffset: 0, endOffset: 22 });
+    await act(async () => ai.play.mock.calls[1][2]());
+    expect(result.isPlaying).toBe(false);
+  });
+
+  it('does not play a late sentence piece after pausing between pieces', async () => {
+    let finish!: (audio: object) => void;
+    const next = new Promise(resolve => { finish = resolve; });
+    ai.generate.mockResolvedValue({ samples: new Float32Array(24000), sampleRate: 24000,
+      charStart: 0, charEnd: 16, next });
+    render({ engine: 'ai' });
+    await act(async () => result.toggle());
+    await act(async () => ai.play.mock.calls[0][2]());
+    act(() => result.toggle());
+    await act(async () => finish({ samples: new Float32Array(24000), sampleRate: 24000, charStart: 16, charEnd: 22 }));
+    expect(ai.play).toHaveBeenCalledOnce();
+    expect(result.isPlaying).toBe(false);
+    expect(result.status).toBeNull();
+  });
+
+  it('resumes inside a streamed sentence without replaying earlier pieces', async () => {
+    const last = { samples: new Float32Array(24000), sampleRate: 24000, charStart: 16, charEnd: 22 };
+    ai.generate.mockResolvedValue({ samples: new Float32Array(24000), sampleRate: 24000,
+      charStart: 0, charEnd: 16, next: Promise.resolve(last) });
+    render({ engine: 'ai' });
+    await act(async () => result.toggle());
+    await act(async () => ai.play.mock.calls[0][2]());
+    expect(result.spokenWord?.startOffset).toBe(16);
+    act(() => result.toggle());
+    await act(async () => result.toggle());
+    expect(ai.play).toHaveBeenCalledTimes(3);
+    expect(ai.play.mock.calls[2][0]).toBe(last);
+  });
+
   it('starts the current sentence immediately while a slow next sentence is prepared in the background', async () => {
     let resolveNext!: (value: object) => void;
     const nextAudio = new Promise((resolve) => { resolveNext = resolve; });

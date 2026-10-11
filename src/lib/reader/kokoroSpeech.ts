@@ -1,10 +1,13 @@
 export interface SpeechAudio {
   samples: Float32Array<ArrayBuffer>;
   sampleRate: number;
+  charStart?: number;
+  charEnd?: number;
+  next?: Promise<SpeechAudio>;
 }
 
 type WorkerReply = { id: number } & (
-  | { type: 'audio'; samples: Float32Array<ArrayBuffer>; sampleRate: number }
+  | { type: 'audio'; samples: Float32Array<ArrayBuffer>; sampleRate: number; charStart: number; charEnd: number; final: boolean }
   | { type: 'progress'; message: string }
   | { type: 'error'; message: string }
 );
@@ -17,6 +20,7 @@ export class KokoroSpeech {
   private requestId = 0;
   private failure: Error | null = null;
   private pending = new Map<number, {
+    key: string;
     resolve: (audio: SpeechAudio) => void;
     reject: (error: Error) => void;
   }>();
@@ -27,9 +31,23 @@ export class KokoroSpeech {
       if (data.type === 'progress') { this.onProgress(data.message); return; }
       if (data.type === 'error' && data.id === 0) { this.fail(new Error(data.message)); return; }
       const request = this.pending.get(data.id);
+      if (!request) return;
       this.pending.delete(data.id);
-      if (data.type === 'audio') request?.resolve({ samples: data.samples, sampleRate: data.sampleRate });
-      else request?.reject(new Error(data.message));
+      if (data.type === 'audio') {
+        const audio: SpeechAudio = { samples: data.samples, sampleRate: data.sampleRate,
+          charStart: data.charStart, charEnd: data.charEnd };
+        if (data.final === false) {
+          audio.next = new Promise<SpeechAudio>((resolve, reject) => {
+            this.pending.set(data.id, { key: request.key, resolve, reject });
+          });
+          // Prefetched or paused audio may never consume its remaining pieces.
+          void audio.next.catch(() => {});
+        }
+        request.resolve(audio);
+      } else {
+        this.cache.delete(request.key);
+        request.reject(new Error(data.message));
+      }
     };
     this.worker.onerror = () => {
       this.fail(new Error('AI voice could not load. Try again or choose Built-in.'));
@@ -59,7 +77,7 @@ export class KokoroSpeech {
     if (cached) return cached;
     const id = ++this.requestId;
     const result = new Promise<SpeechAudio>((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
+      this.pending.set(id, { key, resolve, reject });
       this.worker.postMessage({ id, text, voice, speed });
     }).catch((error) => { this.cache.delete(key); throw error; });
     this.cache.set(key, result);

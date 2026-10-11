@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CanonicalBook } from '../../types/book';
 import type { ReaderPortion } from '../../types/reader';
 import { estimateWordDurations, getSpeechChunks, type SpeechChunk, type SpokenWord } from '../../lib/reader/speechContent';
-import { KokoroSpeech } from '../../lib/reader/kokoroSpeech';
+import { KokoroSpeech, type SpeechAudio } from '../../lib/reader/kokoroSpeech';
 
 interface ReadAloudOptions {
   book: CanonicalBook;
@@ -41,6 +41,7 @@ export function useReadAloud(options: ReadAloudOptions) {
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const aiSpeech = useRef<KokoroSpeech | null>(null);
+  const aiPlaybackDone = useRef<(() => void) | null>(null);
   const wordTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const playback = useRef({
     active: false, generation: 0, chunk: 0, word: 0,
@@ -62,6 +63,8 @@ export function useReadAloud(options: ReadAloudOptions) {
     playback.current.generation += 1;
     playback.current.utterance = null;
     aiSpeech.current?.cancel();
+    aiPlaybackDone.current?.();
+    aiPlaybackDone.current = null;
     setStatus(null);
     if (builtInSupported) window.speechSynthesis.cancel();
   }
@@ -111,44 +114,74 @@ export function useReadAloud(options: ReadAloudOptions) {
       // Queue ahead immediately, including across portions, instead of waiting for playback.
       const ahead = [...state.chunks.slice(state.chunk + 1), ...latest.current.nextChunks].slice(0, 3);
       ahead.forEach((next) => { void speech.generate(next.text, voice, speed).catch(() => {}); });
-      const audio = await recording;
+      let audio: SpeechAudio | undefined = await recording;
       if (!current()) return;
       const allWeights = estimateWordDurations(chunk, 0, 1);
-      const offset = allWeights.slice(0, firstWord).reduce((sum, weight) => sum + weight, 0)
-        / allWeights.reduce((sum, weight) => sum + weight, 0) * audio.samples.length / audio.sampleRate;
       const highlight = (index: number) => {
         state.word = index;
         state.cursor = chunk.words[index];
         setSpokenWord(state.cursor);
       };
-      const clock = speech.play(audio, 1, () => {
+      while (audio && current()) {
+        const part: SpeechAudio = audio;
+        const charStart = part.charStart ?? 0;
+        const charEnd = part.charEnd ?? chunk.text.length;
+        const partStart = chunk.words.findIndex(word => word.charEnd > charStart);
+        const afterPart = chunk.words.findIndex(word => word.charStart >= charEnd);
+        const partEnd = afterPart < 0 ? chunk.words.length : afterPart;
+        const wordStart = Math.max(firstWord, partStart);
+        // On resume, skip already-spoken pieces of the cached sentence.
+        if (wordStart < partEnd && partStart >= 0) {
+          const partWeights = allWeights.slice(partStart, partEnd);
+          const offset = allWeights.slice(partStart, wordStart).reduce((sum, weight) => sum + weight, 0)
+            / partWeights.reduce((sum, weight) => sum + weight, 0) * part.samples.length / part.sampleRate;
+          await new Promise<void>(resolve => {
+            const done = () => {
+              if (aiPlaybackDone.current === done) aiPlaybackDone.current = null;
+              resolve();
+            };
+            aiPlaybackDone.current = done;
+            const clock = speech.play(part, 1, done, offset);
+            setStatus(null);
+            highlight(wordStart);
+            // Fit estimates to each actual audio piece; keep the whole sentence highlighted.
+            const weights = allWeights.slice(wordStart, partEnd);
+            const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
+            let elapsed = 0;
+            const schedule = (index: number) => {
+              if (index + 1 >= weights.length) return;
+              elapsed += weights[index] / totalWeight * clock.duration;
+              wordTimer.current = setTimeout(() => {
+                wordTimer.current = null;
+                if (!current()) return;
+                highlight(wordStart + index + 1);
+                schedule(index + 1);
+              }, Math.max(0, (elapsed - clock.elapsed()) * 1000));
+            };
+            schedule(0);
+          });
+        }
         if (!current()) return;
         clearWordTimer();
+        if (part.next) {
+          wordTimer.current = setTimeout(() => setStatus('Preparing AI voice…'), 150);
+          audio = await part.next;
+          if (!current()) return;
+          clearWordTimer();
+        } else {
+          audio = undefined;
+        }
+      }
+      if (current()) {
         state.chunk += 1;
         state.word = 0;
         speak();
-      }, offset);
-      setStatus(null);
-      highlight(firstWord);
-      // Fit the word-length estimates to this sentence's actual audio duration.
-      const weights = estimateWordDurations(chunk, firstWord, 1);
-      const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
-      let elapsed = 0;
-      const schedule = (index: number) => {
-        if (index + 1 >= weights.length) return;
-        elapsed += weights[index] / totalWeight * clock.duration;
-        wordTimer.current = setTimeout(() => {
-          wordTimer.current = null;
-          if (!current()) return;
-          highlight(firstWord + index + 1);
-          schedule(index + 1);
-        }, Math.max(0, (elapsed - clock.elapsed()) * 1000));
-      };
-      schedule(0);
+      }
     } catch (cause) {
       if (!current()) return;
       aiSpeech.current?.dispose();
       aiSpeech.current = null;
+      aiPlaybackDone.current = null;
       finish();
       setError(cause instanceof Error ? cause.message : 'AI voice could not start. Try again or choose Built-in.');
     }

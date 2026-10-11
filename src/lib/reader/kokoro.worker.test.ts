@@ -21,7 +21,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 async function generate(id = 1, text = 'Hello world.', type = 'audio') {
   self.onmessage?.call(self, { data: { id, text, voice: 'am_echo', speed: 1 } } as MessageEvent);
-  await vi.waitFor(() => expect(messages.mock.calls.some(([reply]) => reply.id === id && reply.type === type)).toBe(true));
+  await vi.waitFor(() => expect(messages.mock.calls.some(([reply]) => reply.id === id && reply.type === type && reply.final !== false)).toBe(true));
 }
 
 it('always uses the compact model, even when WebGPU is available, with Echo', async () => {
@@ -36,6 +36,19 @@ it('reuses the loaded model for subsequent sentences', async () => {
   await generate(2, 'Next sentence.');
   expect(runtime.load).toHaveBeenCalledOnce();
   expect(runtime.generate).toHaveBeenCalledTimes(2);
+});
+
+it('delivers the beginning of a long sentence while its remaining audio is still generating', async () => {
+  let finish!: (audio: { audio: Float32Array }) => void;
+  const remaining = new Promise<{ audio: Float32Array }>(resolve => { finish = resolve; });
+  runtime.generate.mockResolvedValueOnce({ audio: new Float32Array(24000) }).mockReturnValue(remaining);
+  self.onmessage?.call(self, { data: { id: 1, text: 'A long sentence with many words '.repeat(20), voice: 'am_echo', speed: 1 } } as MessageEvent);
+  try {
+    await vi.waitFor(() => expect(messages.mock.calls.some(([reply]) => reply.type === 'audio')).toBe(true), { timeout: 100 });
+  } finally {
+    finish({ audio: new Float32Array(24000) });
+    await vi.waitFor(() => expect(messages.mock.calls.some(([reply]) => reply.type === 'audio' && reply.final !== false)).toBe(true));
+  }
 });
 
 it('retries model initialization after a failed download', async () => {
@@ -56,6 +69,9 @@ it('preserves all text and audio when a sentence exceeds the model context', asy
   const text = 'A long sentence with many words '.repeat(30);
   await generate(1, text);
   expect(runtime.generate.mock.calls.map(([part]) => part).join('')).toBe(text);
-  const reply = messages.mock.calls.find(([reply]) => reply.type === 'audio')![0];
-  expect(reply.samples.length).toBe(runtime.generate.mock.calls.length * 24000);
+  const replies = messages.mock.calls.filter(([reply]) => reply.type === 'audio').map(([reply]) => reply);
+  expect(replies.reduce((sum, reply) => sum + reply.samples.length, 0)).toBe(runtime.generate.mock.calls.length * 24000);
+  expect(replies[0].charStart).toBe(0);
+  expect(replies.at(-1).charEnd).toBe(text.length);
+  expect(replies.slice(1).every((reply, index) => reply.charStart === replies[index].charEnd)).toBe(true);
 });

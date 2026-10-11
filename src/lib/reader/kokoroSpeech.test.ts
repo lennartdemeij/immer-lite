@@ -57,3 +57,32 @@ it('allows retrying a failed sentence', async () => {
   await retry;
   expect(worker.postMessage).toHaveBeenCalledTimes(2);
 });
+
+it('streams and caches the first piece before the rest of the sentence arrives', async () => {
+  const recording = speech.generate('Hello world. A longer sentence.', 'am_echo', 1);
+  worker.onmessage?.({ data: { id: 1, type: 'audio', samples: new Float32Array(24000), sampleRate: 24000,
+    charStart: 0, charEnd: 13, final: false } } as MessageEvent);
+  const first = await recording;
+  expect(first.charEnd).toBe(13);
+  expect(speech.generate('Hello world. A longer sentence.', 'am_echo', 1)).toBe(recording);
+  worker.onmessage?.({ data: { id: 1, type: 'audio', samples: new Float32Array(48000), sampleRate: 24000,
+    charStart: 13, charEnd: 31, final: true } } as MessageEvent);
+  const last = await first.next;
+  expect(last).toMatchObject({ charStart: 13, charEnd: 31 });
+  expect(last?.next).toBeUndefined();
+  expect(worker.postMessage).toHaveBeenCalledOnce();
+});
+
+it('evicts a partially generated sentence if a later piece fails so it can be retried', async () => {
+  const recording = speech.generate('A streamed sentence.', 'am_echo', 1);
+  worker.onmessage?.({ data: { id: 1, type: 'audio', samples: new Float32Array(24000), sampleRate: 24000,
+    charStart: 0, charEnd: 11, final: false } } as MessageEvent);
+  const first = await recording;
+  const rejected = expect(first.next).rejects.toThrow('Failed later');
+  worker.onmessage?.({ data: { id: 1, type: 'error', message: 'Failed later' } } as MessageEvent);
+  await rejected;
+  const retry = speech.generate('A streamed sentence.', 'am_echo', 1);
+  complete(2);
+  await retry;
+  expect(worker.postMessage).toHaveBeenCalledTimes(2);
+});

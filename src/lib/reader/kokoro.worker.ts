@@ -28,15 +28,19 @@ async function loadModel(id: number): Promise<KokoroTTS> {
   }
 }
 
-async function generate(tts: KokoroTTS, text: string, voice: 'am_echo', speed: number) {
-  // Kokoro truncates beyond its context window. Keep every word in long sentences.
-  const parts = text.match(/.{1,300}(?:\s|$)|\S+/gs) ?? [text];
-  const recordings: Float32Array[] = [];
-  for (const part of parts) recordings.push((await tts.generate(part, { voice, speed })).audio);
-  const samples = new Float32Array(recordings.reduce((sum, part) => sum + part.length, 0));
-  let offset = 0;
-  for (const recording of recordings) { samples.set(recording, offset); offset += recording.length; }
-  return samples;
+async function generate(tts: KokoroTTS, id: number, text: string, voice: 'am_echo', speed: number) {
+  // Deliver bounded pieces immediately, rather than waiting for a whole long sentence.
+  // Preserve exact text offsets so highlighting still follows the original sentence.
+  const parts = text.match(/.{60,160}?[,;:—]\s+|.{1,160}(?:\s|$)|\S+/gs) ?? [text];
+  let charStart = 0;
+  for (let index = 0; index < parts.length; index++) {
+    const part = parts[index];
+    const samples = new Float32Array((await tts.generate(part, { voice, speed })).audio);
+    const charEnd = charStart + part.length;
+    self.postMessage({ id, type: 'audio', samples, sampleRate: 24000,
+      charStart, charEnd, final: index === parts.length - 1 }, { transfer: [samples.buffer] });
+    charStart = charEnd;
+  }
 }
 
 self.onmessage = ({ data }: MessageEvent<{ id: number; text: string; voice: 'am_echo'; speed: number }>) => {
@@ -46,9 +50,7 @@ self.onmessage = ({ data }: MessageEvent<{ id: number; text: string; voice: 'am_
     try {
       if (!model) model = loadModel(id);
       const tts = await model;
-      const samples = await generate(tts, text, voice, speed);
-      self.postMessage({ id, type: 'audio', samples, sampleRate: 24000 },
-        { transfer: [samples.buffer] });
+      await generate(tts, id, text, voice, speed);
     } catch {
       self.postMessage({ id: data.id, type: 'error',
         message: 'AI voice could not generate speech. Check your connection, then try again or choose Built-in.' });
