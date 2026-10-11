@@ -1836,25 +1836,29 @@ export function ReaderScreen({
                   </div>
                 ) : null}
                 {touchSelection && selectionDraft ? (
-                  <div className="annotation-live-overlay touch-selection-overlay">
-                    {selectionDraft.rects.map((rect, index) => (
-                      <div key={`selection-${index}`} className="annotation-live-rect"
-                        style={{ left: `${rect.x}%`, top: `${rect.y}%`, width: `${rect.width}%`, height: `${rect.height}%` }} />
-                    ))}
-                    {(['start', 'end'] as const).map((handle) => {
-                      const rect = handle === 'start' ? selectionDraft.rects[0] : selectionDraft.rects.at(-1);
-                      return rect ? (
-                        <button key={handle} type="button" className={`selection-handle selection-handle-${handle}`}
-                          aria-label={`Adjust selection ${handle}`}
-                          style={{ left: `${rect.x + (handle === 'end' ? rect.width : 0)}%`, top: `${rect.y + rect.height}%` }}
-                          onPointerDown={(event) => startSelectionHandle(event, handle)}
-                          onPointerMove={moveTouchSelection}
-                          onPointerUp={endTouchSelection}
-                          onPointerCancel={endTouchSelection}
-                          onClick={(event) => event.stopPropagation()} />
-                      ) : null;
-                    })}
-                  </div>
+                  <>
+                    <div className="annotation-live-overlay touch-selection-overlay">
+                      {selectionDraft.rects.map((rect, index) => (
+                        <div key={`selection-${index}`} className="annotation-live-rect"
+                          style={{ left: `${rect.x}%`, top: `${rect.y}%`, width: `${rect.width}%`, height: `${rect.height}%` }} />
+                      ))}
+                    </div>
+                    <div className="annotation-live-overlay selection-handles-overlay">
+                      {(['start', 'end'] as const).map((handle) => {
+                        const rect = handle === 'start' ? selectionDraft.rects[0] : selectionDraft.rects.at(-1);
+                        return rect ? (
+                          <button key={handle} type="button" className={`selection-handle selection-handle-${handle}`}
+                            aria-label={`Adjust selection ${handle}`}
+                            style={{ left: `${rect.x + (handle === 'end' ? rect.width : 0)}%`, top: `${rect.y + rect.height}%` }}
+                            onPointerDown={(event) => startSelectionHandle(event, handle)}
+                            onPointerMove={moveTouchSelection}
+                            onPointerUp={endTouchSelection}
+                            onPointerCancel={endTouchSelection}
+                            onClick={(event) => event.stopPropagation()} />
+                        ) : null;
+                      })}
+                    </div>
+                  </>
                 ) : null}
                 {activeAnnotationRects.length > 0 ? (
                   <div className="annotation-live-overlay" aria-hidden="true">
