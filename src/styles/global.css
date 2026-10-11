@@ -1412,10 +1412,11 @@ button {
 }
 
 .annotation-text {
-  text-decoration: underline;
-  text-decoration-thickness: 0.11em;
-  text-underline-offset: 0.16em;
-  text-decoration-color: var(--accent);
+  text-decoration: none;
+  background: rgb(var(--reading-highlight-rgb) / 0.16);
+  border-radius: 3px;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
 }
 
 /* Paint every marker below the glyphs; alpha and blend modes must never hide ink. */
