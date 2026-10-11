@@ -106,9 +106,9 @@ button {
     calc(var(--safe-bottom) + 10px);
 }
 
-@supports ((backdrop-filter: blur(14px)) or (-webkit-backdrop-filter: blur(14px))) {
+@supports ((backdrop-filter: blur(6px)) or (-webkit-backdrop-filter: blur(6px))) {
   .reader-shell {
-    --reader-glass-bg: color-mix(in srgb, var(--reader-panel-bg) 56%, #fff 12%);
+    --reader-glass-bg: color-mix(in srgb, var(--reader-panel-bg) 42%, #fff 8%);
   }
 }
 
@@ -819,12 +819,9 @@ button {
   backdrop-filter: blur(12px);
 }
 
-.reader-actions button,
-.reader-tools-menu,
 .reader-tools-label,
 .read-aloud-toggle,
 .reader-get-back,
-.navigator-modes,
 .navigator-chapter-label,
 .navigator-note-label,
 .annotation-save-button,
@@ -834,18 +831,25 @@ button {
   background: var(--reader-glass-bg);
 }
 
-.reader-actions > button,
-.reader-tools-menu,
 .reader-tools-label,
 .read-aloud-toggle,
 .reader-get-back,
-.navigator-modes,
 .navigator-chapter-label.visible,
 .navigator-note-label.visible,
 .annotation-save-button,
 .annotation-actions button {
-  -webkit-backdrop-filter: blur(14px) saturate(1.2);
-  backdrop-filter: blur(14px) saturate(1.2);
+  -webkit-backdrop-filter: blur(6px) saturate(1.05);
+  backdrop-filter: blur(6px) saturate(1.05);
+}
+
+.reader-actions button,
+.reader-tools-menu,
+.navigator-modes {
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 
 .reader-actions {
@@ -868,7 +872,6 @@ button {
 .reader-actions .reader-tools-toggle.open,
 .reader-actions .reader-tools-toggle.playing {
   opacity: 1;
-  background: var(--reader-glass-bg);
 }
 
 .reader-tools-menu {
@@ -1133,15 +1136,16 @@ button {
   bottom: calc(16px + var(--safe-bottom));
   left: calc(12px + var(--safe-left));
   display: flex;
-  padding: 3px;
+  gap: 4px;
+  padding: 4px;
   pointer-events: auto;
   z-index: 5;
 }
 .side-left .navigator-modes { left: auto; right: calc(12px + var(--safe-right)); }
 .navigator-viewing-note :is(.book-navigator, .reader-header) { z-index: 36; }
 .navigator-viewing-note .annotation-sheet-viewer { bottom: calc(84px + var(--safe-bottom) + var(--visual-viewport-inset, 0px)); }
-.navigator-modes button { display: grid; justify-items: center; gap: 3px; min-width: 54px; min-height: 46px; padding: 5px; border: 0; border-radius: 999px; background: transparent; color: var(--muted); font: 500 10px/1.2 system-ui, sans-serif; }
-.navigator-modes button[aria-pressed="true"] { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--text); }
+.navigator-modes button { display: grid; justify-items: center; gap: 5px; min-width: 56px; min-height: 54px; padding: 8px 10px; border: 0; border-radius: 999px; background: transparent; color: var(--muted); font: 500 10px/1.2 system-ui, sans-serif; }
+.navigator-modes button[aria-pressed="true"] { background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--text); }
 .navigator-modes svg { width: 20px; height: 20px; }
 .navigator-modes button:focus-visible, .navigator-chapter-label:focus-visible, .navigator-note-label:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .navigator-chapter { position: absolute; inset: 0 0 auto; transition: transform 420ms cubic-bezier(0.16, 1, 0.3, 1), opacity 180ms ease; }
