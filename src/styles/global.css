@@ -92,6 +92,7 @@ button {
 }
 
 .reader-shell {
+  --reader-glass-bg: var(--surface-strong);
   min-height: 100vh;
   min-height: 100svh;
   min-height: 100dvh;
@@ -103,6 +104,12 @@ button {
     calc(var(--safe-top) + 18px)
     0
     calc(var(--safe-bottom) + 10px);
+}
+
+@supports ((backdrop-filter: blur(14px)) or (-webkit-backdrop-filter: blur(14px))) {
+  .reader-shell {
+    --reader-glass-bg: color-mix(in srgb, var(--reader-panel-bg) 56%, #fff 12%);
+  }
 }
 
 .reader-dust {
@@ -812,6 +819,35 @@ button {
   backdrop-filter: blur(12px);
 }
 
+.reader-actions button,
+.reader-tools-menu,
+.reader-tools-label,
+.read-aloud-toggle,
+.reader-get-back,
+.navigator-modes,
+.navigator-chapter-label,
+.navigator-note-label,
+.annotation-save-button,
+.annotation-actions button {
+  border: 0;
+  border-radius: 999px;
+  background: var(--reader-glass-bg);
+}
+
+.reader-actions > button,
+.reader-tools-menu,
+.reader-tools-label,
+.read-aloud-toggle,
+.reader-get-back,
+.navigator-modes,
+.navigator-chapter-label.visible,
+.navigator-note-label.visible,
+.annotation-save-button,
+.annotation-actions button {
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  backdrop-filter: blur(14px) saturate(1.2);
+}
+
 .reader-actions {
   position: static;
   display: flex;
@@ -824,9 +860,7 @@ button {
   padding: 10px;
   display: grid;
   place-items: center;
-  background: transparent;
-  border-color: transparent;
-  opacity: 0.5;
+  opacity: 0.85;
   transition: opacity 160ms ease, background 160ms ease;
 }
 
@@ -834,8 +868,7 @@ button {
 .reader-actions .reader-tools-toggle.open,
 .reader-actions .reader-tools-toggle.playing {
   opacity: 1;
-  background: var(--surface);
-  border-color: var(--stroke);
+  background: var(--reader-glass-bg);
 }
 
 .reader-tools-menu {
@@ -847,10 +880,6 @@ button {
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
-  border: 1px solid var(--stroke);
-  border-radius: 18px;
-  background: var(--reader-panel-bg);
-  box-shadow: var(--shadow);
   font: 500 0.85rem/1.3 system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
@@ -866,9 +895,10 @@ button {
   justify-content: center;
   touch-action: manipulation;
   border: 0;
-  border-radius: 12px;
+  border-radius: 999px;
   background: transparent;
   padding: 9px;
+  -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
 
@@ -878,9 +908,6 @@ button {
   left: 50%;
   transform: translateX(-50%);
   padding: 6px 9px;
-  border: 1px solid var(--stroke);
-  border-radius: 9px;
-  background: var(--reader-panel-bg);
   color: var(--text);
   white-space: nowrap;
   pointer-events: none;
@@ -994,10 +1021,7 @@ button {
   width: 44px;
   height: 44px;
   padding: 12px;
-  border: 1px solid var(--stroke);
-  border-radius: 50%;
   color: var(--text);
-  background: var(--surface);
 }
 
 .read-aloud-toggle svg {
@@ -1073,9 +1097,6 @@ button {
   gap: 6px;
   min-height: 44px;
   padding: 8px 12px;
-  border: 1px solid var(--stroke);
-  border-radius: 12px;
-  background: var(--surface-strong);
   color: var(--text);
   font: 500 12px/1.2 system-ui, sans-serif;
 }
@@ -1113,16 +1134,13 @@ button {
   left: calc(12px + var(--safe-left));
   display: flex;
   padding: 3px;
-  border: 1px solid var(--stroke);
-  border-radius: 12px;
-  background: var(--surface-strong);
   pointer-events: auto;
   z-index: 5;
 }
 .side-left .navigator-modes { left: auto; right: calc(12px + var(--safe-right)); }
 .navigator-viewing-note :is(.book-navigator, .reader-header) { z-index: 36; }
 .navigator-viewing-note .annotation-sheet-viewer { bottom: calc(84px + var(--safe-bottom) + var(--visual-viewport-inset, 0px)); }
-.navigator-modes button { display: grid; justify-items: center; gap: 3px; min-width: 54px; min-height: 46px; padding: 5px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); font: 500 10px/1.2 system-ui, sans-serif; }
+.navigator-modes button { display: grid; justify-items: center; gap: 3px; min-width: 54px; min-height: 46px; padding: 5px; border: 0; border-radius: 999px; background: transparent; color: var(--muted); font: 500 10px/1.2 system-ui, sans-serif; }
 .navigator-modes button[aria-pressed="true"] { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--text); }
 .navigator-modes svg { width: 20px; height: 20px; }
 .navigator-modes button:focus-visible, .navigator-chapter-label:focus-visible, .navigator-note-label:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -1134,8 +1152,6 @@ button {
   position: absolute;
   right: 44px;
   max-width: calc(100% - 48px);
-  border: 1px solid var(--stroke);
-  background: var(--surface-strong);
   color: var(--text);
   opacity: 0;
   pointer-events: none;
@@ -1143,12 +1159,12 @@ button {
   text-align: left;
 }
 .side-left :is(.navigator-chapter-label, .navigator-note-label) { right: auto; left: 44px; }
-.navigator-chapter-label { padding: 8px 10px; border-radius: 10px; font: 500 0.8rem/1.25 system-ui, sans-serif; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.navigator-chapter.active .navigator-chapter-label { color: var(--accent); border-color: var(--accent); font-weight: 650; }
+.navigator-chapter-label { padding: 8px 12px; font: 500 0.8rem/1.25 system-ui, sans-serif; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.navigator-chapter.active .navigator-chapter-label { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--reader-glass-bg)); font-weight: 650; }
 :is(.navigator-chapter-label, .navigator-note-label).visible { opacity: 1; pointer-events: auto; }
 :is(.navigator-chapter-label, .navigator-note-label).visible:disabled { opacity: 0.6; cursor: default; }
 .navigator-note { position: absolute; inset: 0 0 auto; transition: transform 420ms cubic-bezier(0.16, 1, 0.3, 1); }
-.navigator-note-label { display: flex; align-items: center; gap: 7px; min-height: 32px; padding: 3px 8px 3px 4px; border-radius: 10px; transform: translateY(-50%); font: 500 0.72rem/1.3 system-ui, sans-serif; }
+.navigator-note-label { display: flex; align-items: center; gap: 7px; min-height: 32px; padding: 3px 10px 3px 4px; transform: translateY(-50%); font: 500 0.72rem/1.3 system-ui, sans-serif; }
 .navigator-note-label span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mode-portions .navigator-note-label { max-width: min(180px, calc(100% - 48px)); }
 .navigator-note-avatar { flex: 0 0 24px; width: 24px; height: 24px; border-radius: 50%; object-fit: cover; }
@@ -1626,13 +1642,10 @@ button {
 }
 
 .annotation-save-button {
-  border: 1px solid var(--stroke);
-  background: var(--surface);
   color: var(--text);
   width: 46px;
   height: 46px;
   padding: 0;
-  border-radius: 16px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1653,18 +1666,13 @@ button {
 }
 
 .annotation-actions button {
-  border: 1px solid var(--stroke);
-  background: var(--surface);
   color: var(--text);
   padding: 9px 13px;
-  border-radius: 999px;
   font-weight: 700;
 }
 
 .annotation-actions .annotation-delete-button {
   color: var(--accent);
-  border-color: var(--annotation-note-border);
-  background: var(--annotation-book-bg);
 }
 
 @keyframes annotation-backdrop-in {
