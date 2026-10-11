@@ -1165,7 +1165,7 @@ button {
 .navigator-left .reader-tools-menu { left: auto; right: calc(22px + var(--safe-right)); }
 .navigator-left .reader-header.reading-aloud .reader-tools-menu { left: auto; right: calc(22px + var(--safe-right)); }
 .navigator-left .reader-header.reading-aloud .reader-actions { margin-left: 56px; }
-.navigator-left .reader-stage.navigator-dragging { --navigator-drag-shift-x: 30px; }
+.navigator-left .reader-stage.navigator-dragging { --navigator-drag-shift-x: min(30px, 3vw); }
 @media (prefers-reduced-motion: reduce) {
   .book-navigator :is(.navigator-content, .navigator-chapter, .navigator-chapter-bar, .navigator-chapter-label, .navigator-note, .navigator-note-label, .navigator-current-marker) { transition-duration: 0ms; }
 }
@@ -1252,12 +1252,20 @@ button {
   transform:
     translateX(var(--navigator-drag-shift-x, -20px))
     perspective(2000px)
-    rotateY(var(--navigator-tilt-y, 0deg));
+    rotateY(var(--navigator-tilt-y, 0deg))
+    scale(0.9);
   transition-duration: 200ms;
 }
 
 .reader-stage.navigator-dragging {
-  --navigator-drag-shift-x: -30px;
+  --navigator-drag-shift-x: max(-30px, -3vw);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .portion-pane-current .portion-sheet,
+  .reader-stage.navigator-dragging .portion-pane-current .portion-sheet {
+    transition-duration: 0ms;
+  }
 }
 
 .continuation-bridge-shell {
