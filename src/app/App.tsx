@@ -5,6 +5,7 @@ import {
   useState
 } from 'react';
 import { loadPublication, revokeBookResources } from '../lib/publication/loadPublication';
+import { loadDemoImmerBook } from '../lib/immer/loadImmerBook';
 import { paginateBook } from '../lib/portioning/paginateBook';
 import {
   deleteAnnotation,
@@ -263,20 +264,24 @@ export function App() {
   const canGoPrevious = currentIndex > 0;
   const canGoNext = currentIndex < pagination.portions.length - 1;
 
+  function activateBook(loaded: CanonicalBook) {
+    const stored = loadStoredPosition(loaded.fingerprint);
+    revokeBookResources(previousBookRef.current);
+    previousBookRef.current = loaded;
+    anchorRef.current = stored?.anchor ?? getPreferredStartAnchor(loaded);
+    setCurrentIndex(0);
+    setPagination({ portions: [] });
+    setAnnotations(loadAnnotations(loaded.fingerprint));
+    setBook(loaded);
+  }
+
   async function openBookFile(file: File, persist = true) {
     setError(null);
     setUploading(true);
 
     try {
       const loaded = await loadPublication(file);
-      const stored = loadStoredPosition(loaded.fingerprint);
-      revokeBookResources(previousBookRef.current);
-      previousBookRef.current = loaded;
-      anchorRef.current = stored?.anchor ?? getPreferredStartAnchor(loaded);
-      setCurrentIndex(0);
-      setPagination({ portions: [] });
-      setAnnotations(loadAnnotations(loaded.fingerprint));
-      setBook(loaded);
+      activateBook(loaded);
       if (persist) {
         void saveOpenedPublication(file, loaded.fingerprint);
       }
@@ -293,6 +298,19 @@ export function App() {
 
   async function handleFileSelected(file: File) {
     await openBookFile(file, true);
+  }
+
+  async function handleLoadImmerBook() {
+    if (uploading || repaginating) return;
+    setError(null);
+    setUploading(true);
+    try {
+      activateBook(await loadDemoImmerBook());
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'Could not open the Immer book.');
+    } finally {
+      setUploading(false);
+    }
   }
 
   useEffect(() => {
@@ -473,6 +491,8 @@ export function App() {
             requestedSettings={settings}
             onSettingsChange={setSettings}
             onFileSelected={handleFileSelected}
+            onLoadImmerBook={handleLoadImmerBook}
+            bookLoading={appBusy}
             onPrevious={() => setCurrentIndex((index) => Math.max(0, index - 1))}
             onNext={() =>
               setCurrentIndex((index) =>

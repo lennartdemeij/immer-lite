@@ -30,6 +30,7 @@ export interface BookComputedStyle {
 
 export interface BookInline {
   id: string;
+  sourceItemLocationId?: string;
   text: string;
   marks: InlineMark[];
   href?: string;

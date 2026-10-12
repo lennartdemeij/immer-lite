@@ -1754,6 +1754,11 @@ button {
   gap: 14px;
 }
 
+.settings-panel > .settings-panel-inner {
+  max-height: calc(100dvh - 90px - var(--safe-top) - var(--safe-bottom));
+  overflow-y: auto;
+}
+
 .book-search-panel {
   width: min(380px, calc(100vw - 36px - var(--safe-left) - var(--safe-right)));
   font: 400 0.88rem/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -1851,6 +1856,19 @@ button {
 }
 
 .settings-checkbox input { width: 20px; height: 20px; accent-color: var(--accent); }
+.settings-immer-button {
+  justify-self: start;
+  padding: 2px 0;
+  border: 0;
+  color: var(--muted);
+  background: none;
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+.settings-immer-button:hover { color: var(--text); }
+.settings-immer-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.settings-immer-button:disabled { cursor: wait; opacity: 0.6; }
+
 .settings-checkbox select {
   padding: 7px 10px;
   border: 1px solid var(--stroke);

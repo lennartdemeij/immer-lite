@@ -6,13 +6,17 @@ interface SettingsPanelProps {
   settings: ReaderSettings;
   onChange: (next: ReaderSettings) => void;
   panelRef?: RefObject<HTMLElement>;
+  onLoadImmerBook?: () => Promise<void>;
+  bookLoading?: boolean;
 }
 
 export function SettingsPanel({
   open,
   settings,
   onChange,
-  panelRef
+  panelRef,
+  onLoadImmerBook,
+  bookLoading
 }: SettingsPanelProps) {
   return (
     <aside
@@ -148,6 +152,15 @@ export function SettingsPanel({
             ))}
           </div>
         </div>
+        {onLoadImmerBook ? (
+          <div className="settings-group">
+            <button type="button" className="settings-immer-button"
+              disabled={bookLoading} aria-busy={bookLoading}
+              onClick={() => { void onLoadImmerBook(); }}>
+              <span>{bookLoading ? 'Loading immerBook…' : 'load immerBook'}</span>
+            </button>
+          </div>
+        ) : null}
       </div>
     </aside>
   );

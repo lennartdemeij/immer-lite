@@ -48,6 +48,8 @@ interface ReaderScreenProps {
   requestedSettings: ReaderSettings;
   onSettingsChange: (settings: ReaderSettings) => void;
   onFileSelected: (file: File) => void;
+  onLoadImmerBook?: () => Promise<void>;
+  bookLoading?: boolean;
   onPrevious: () => void;
   onNext: () => void;
   onJumpToPortion: (index: number) => void;
@@ -283,6 +285,8 @@ export function ReaderScreen({
   requestedSettings,
   onSettingsChange,
   onFileSelected,
+  onLoadImmerBook,
+  bookLoading,
   onPrevious,
   onNext,
   onJumpToPortion,
@@ -2000,6 +2004,11 @@ export function ReaderScreen({
         open={settingsOpen}
         settings={requestedSettings}
         onChange={onSettingsChange}
+        onLoadImmerBook={onLoadImmerBook ? async () => {
+          await onLoadImmerBook();
+          setSettingsOpen(false);
+        } : undefined}
+        bookLoading={bookLoading}
       /> : null}
     </div>
   );
