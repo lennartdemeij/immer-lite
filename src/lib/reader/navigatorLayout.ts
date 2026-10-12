@@ -26,7 +26,7 @@ export function getNavigatorChapters(portions: ReaderPortion[]): NavigatorChapte
 
 export function layoutNavigator(
   chapters: NavigatorChapter[], notes: NavigatorNote[], mode: NavigatorMode,
-  viewportHeight: number, hasCover: boolean
+  viewportHeight: number, hasCover: boolean, labelHeights: ReadonlyMap<string, number> = new Map()
 ) {
   const coverHeight = hasCover && mode !== 'notes' ? 56 : 0;
   const sortedNotes = [...notes].sort((a, b) => a.index - b.index || a.annotation.startOffset - b.annotation.startOffset);
@@ -34,6 +34,8 @@ export function layoutNavigator(
   const space = Math.max(1, viewportHeight * (mode === 'book' ? 0.9 : 1) - coverHeight);
   const gap = mode === 'book' ? Math.min(3, space / Math.max(1, chapters.length * 4)) : mode === 'notes' ? 12 : 3;
   const bookHeight = Math.max(0, space - gap * Math.max(0, chapters.length - 1));
+  const minimumHeight = (chapter: NavigatorChapter) => Math.max(44, labelHeights.get(chapter.id) ?? 0);
+  const remainingBookHeight = Math.max(0, bookHeight - chapters.reduce((sum, chapter) => sum + minimumHeight(chapter), 0));
   let top = coverHeight;
   let visibleGroups = 0;
   const groups: NavigatorGroup[] = chapters.map((chapter) => {
@@ -41,8 +43,8 @@ export function layoutNavigator(
     const visible = mode !== 'notes' || chapterNotes.length > 0;
     if (visible && visibleGroups++ > 0) top += gap;
     const portionCount = chapter.end - chapter.start + 1;
-    const height = mode === 'book' ? bookHeight * portionCount / Math.max(1, count)
-      : mode === 'chapters' ? 44 : mode === 'notes' ? chapterNotes.length * 40 : portionCount * 4;
+    const height = mode === 'book' ? minimumHeight(chapter) + remainingBookHeight * portionCount / Math.max(1, count)
+      : mode === 'chapters' ? minimumHeight(chapter) : mode === 'notes' ? chapterNotes.length * 40 : Math.max(minimumHeight(chapter), portionCount * 4);
     const group = { ...chapter, top, height, notes: chapterNotes.map((note, i) => ({ ...note,
       y: top + (mode === 'notes' ? i * 40 + 20 : (note.index - chapter.start + 0.5) / portionCount * height)
     })) };

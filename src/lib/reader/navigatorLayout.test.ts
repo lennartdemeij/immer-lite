@@ -28,6 +28,28 @@ describe('navigator zoom layouts', () => {
     expect(layout.height).toBeGreaterThan(100);
   });
 
+  it('reserves the measured label height for short parts and chapters in every reading mode', () => {
+    const groups = [
+      { id: 'part', label: 'Part One', start: 0, end: 0 },
+      { id: 'chapter', label: 'Chapter One', start: 1, end: 20 }
+    ];
+    for (const mode of ['portions', 'book', 'chapters'] as const) {
+      const layout = layoutNavigator(groups, [], mode, 100, false, new Map([['part', 60], ['chapter', 52]]));
+      expect(layout.groups[0].height).toBeGreaterThanOrEqual(60);
+      expect(layout.groups[1].height).toBeGreaterThanOrEqual(52);
+      expect(layout.groups[1].top).toBeGreaterThanOrEqual(layout.groups[0].height);
+      for (const index of [0, 1, 10, 20]) {
+        expect(navigatorIndexAt(layout.groups, navigatorPosition(layout.groups, index, mode), mode)).toBe(index);
+      }
+    }
+  });
+
+  it('lets the book overview exceed its viewport when the labels cannot fit', () => {
+    const layout = layoutNavigator(chapters, [], 'book', 100, false);
+    expect(layout.groups.every(group => group.height >= 44)).toBe(true);
+    expect(layout.height).toBeGreaterThan(100);
+  });
+
   it('sizes note chapters by their labels and keeps same-portion notes separate', () => {
     const layout = layoutNavigator(chapters, [note('later', 920), note('two', 3, 20), note('one', 3)], 'notes', 600, true);
     expect(layout.coverHeight).toBe(0);

@@ -33,6 +33,7 @@ export const BookNavigator = memo(function BookNavigator({ portions, annotations
   const [selectedMode, setSelectedMode] = useState<NavigatorMode>('portions');
   const viewportRef = useRef<HTMLDivElement>(null);
   const [height, setHeight] = useState(0);
+  const [labelHeights, setLabelHeights] = useState<ReadonlyMap<string, number>>(new Map());
   const [dragOffset, setDragOffset] = useState<number | null>(null);
   const drag = useRef<{ pointerId: number; startX: number; startY: number; moved: boolean; offset: number; index: number; mode: NavigatorMode } | null>(null);
   const mode = drag.current?.mode ?? (expanded ? selectedMode : 'portions');
@@ -43,21 +44,27 @@ export const BookNavigator = memo(function BookNavigator({ portions, annotations
       index: findTextPortionIndex(index, annotation.blockId, annotation.startOffset)
     })).filter(note => note.index >= 0);
   }, [annotations, portions]);
-  const layout = useMemo(() => layoutNavigator(chapters, notes, mode, height, Boolean(coverUrl)), [chapters, notes, mode, height, coverUrl]);
+  const layout = useMemo(() => layoutNavigator(chapters, notes, mode, height, Boolean(coverUrl), labelHeights), [chapters, notes, mode, height, coverUrl, labelHeights]);
   const position = navigatorPosition(layout.groups, focusedIndex, mode);
   const offset = mode === 'portions' ? dragOffset ?? height / 2 - position : 0;
-  const scrollable = mode === 'chapters' || mode === 'notes';
+  const scrollable = mode === 'chapters' || mode === 'notes' || (mode === 'book' && layout.height > height);
   const activeChapter = layout.groups.find(group => focusedIndex >= group.start && focusedIndex <= group.end);
 
   useLayoutEffect(() => {
     const node = viewportRef.current;
     if (!node) return;
-    const measure = () => setHeight(node.clientHeight);
+    const labels = Array.from(node.querySelectorAll<HTMLButtonElement>('.navigator-chapter-label'));
+    const measure = () => {
+      setHeight(node.clientHeight);
+      const next = new Map(labels.map(label => [label.dataset.chapterId!, label.offsetHeight]));
+      setLabelHeights(current => current.size === next.size && [...next].every(([id, value]) => current.get(id) === value) ? current : next);
+    };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(node);
+    labels.forEach(label => observer.observe(label));
     return () => observer.disconnect();
-  }, []);
+  }, [chapters]);
 
   useLayoutEffect(() => {
     setDragOffset(null);
@@ -126,7 +133,7 @@ export const BookNavigator = memo(function BookNavigator({ portions, annotations
     const prioritized = [...layout.groups].sort((a, b) => Number(b === activeChapter) - Number(a === activeChapter));
     prioritized.forEach(group => {
       const y = mode === 'portions' && group === activeChapter ? position : group.top + group.height / 2;
-      if (mode === 'chapters' || (y + offset >= (mode === 'portions' ? 80 : 18) && y + offset < height - (mode === 'portions' ? 88 : 18) &&
+      if (mode === 'chapters' || mode === 'book' || (y + offset >= (mode === 'portions' ? 80 : 18) && y + offset < height - (mode === 'portions' ? 88 : 18) &&
         chapterLabels.every(label => Math.abs(label.y - y) >= 40))) chapterLabels.push({ id: group.id, y });
     });
   }
@@ -167,6 +174,7 @@ export const BookNavigator = memo(function BookNavigator({ portions, annotations
               <div className="navigator-chapter-bar" style={{ transform: `scaleY(${group.height})`,
                 background: `linear-gradient(to bottom, var(--navigator-completed) ${progress * 100}%, var(--navigator-upcoming) ${progress * 100}%)` }} />
               <button type="button" className={`navigator-chapter-label${label && expanded ? ' visible' : ''}`}
+                data-chapter-id={group.id}
                 style={{ transform: `translateY(${(label?.y ?? group.top + group.height / 2) - group.top}px) translateY(-50%)` }}
                 disabled={disabled} tabIndex={label && expanded ? 0 : -1} aria-hidden={!label || !expanded}
                 aria-label={`Go to ${group.label}`} title={group.label} onClick={() => onJump(group.start)}>{group.label}</button>
