@@ -173,7 +173,7 @@ export const BookNavigator = memo(function BookNavigator({ portions, sections, a
             const visible = mode !== 'notes' || group.notes.length > 0;
             return <div key={group.id} className={`navigator-chapter${group.isPart ? ' is-part' : ''}${group === activeChapter ? ' active' : ''}`}
               style={{ transform: `translateY(${group.top}px)`, opacity: visible ? 1 : 0 }}>
-              <div className="navigator-chapter-bar" style={{ transform: `scaleY(${group.height})`,
+              <div className="navigator-chapter-bar" style={{ height: `${group.height}px`,
                 background: `linear-gradient(to bottom, var(--navigator-group-completed, var(--navigator-completed)) ${progress * 100}%, var(--navigator-group-upcoming, var(--navigator-upcoming)) ${progress * 100}%)` }} />
               <button type="button" className={`navigator-chapter-label${label && expanded ? ' visible' : ''}`}
                 data-chapter-id={group.id}
