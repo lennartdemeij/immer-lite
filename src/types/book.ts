@@ -109,6 +109,7 @@ export interface BookSection {
   matter: SectionMatter;
   navLabel?: string;
   tocDepth?: number;
+  navigationKind?: 'part' | 'chapter' | 'subchapter';
   anchorIds: string[];
   localLinks: string[];
 }

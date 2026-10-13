@@ -1,11 +1,13 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent, RefObject } from 'react';
 import type { ReaderPortion, TextAnnotation } from '../../types/reader';
+import type { BookSection } from '../../types/book';
 import { createTextPortionIndex, findTextPortionIndex } from '../../lib/reader/search';
 import { getNavigatorChapters, layoutNavigator, navigatorIndexAt, navigatorPosition, type NavigatorMode } from '../../lib/reader/navigatorLayout';
 
 interface BookNavigatorProps {
   portions: ReaderPortion[];
+  sections?: BookSection[];
   annotations: TextAnnotation[];
   focusedIndex: number;
   coverUrl?: string;
@@ -28,7 +30,7 @@ const modes: Array<{ mode: NavigatorMode; label: string; path: string }> = [
   { mode: 'notes', label: 'Notes', path: 'M6 3h12v18l-6-4-6 4z' }
 ];
 
-export const BookNavigator = memo(function BookNavigator({ portions, annotations, focusedIndex, coverUrl, expanded, side, disabled,
+export const BookNavigator = memo(function BookNavigator({ portions, sections, annotations, focusedIndex, coverUrl, expanded, side, disabled,
   navigatorRef, onJump, onNote, onOpen, onDismiss, onDragging, onTilt }: BookNavigatorProps) {
   const [selectedMode, setSelectedMode] = useState<NavigatorMode>('portions');
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -37,7 +39,7 @@ export const BookNavigator = memo(function BookNavigator({ portions, annotations
   const [dragOffset, setDragOffset] = useState<number | null>(null);
   const drag = useRef<{ pointerId: number; startX: number; startY: number; moved: boolean; offset: number; index: number; mode: NavigatorMode } | null>(null);
   const mode = drag.current?.mode ?? (expanded ? selectedMode : 'portions');
-  const chapters = useMemo(() => getNavigatorChapters(portions), [portions]);
+  const chapters = useMemo(() => getNavigatorChapters(portions, sections), [portions, sections]);
   const notes = useMemo(() => {
     const index = createTextPortionIndex(portions);
     return annotations.map(annotation => ({ annotation,
@@ -47,7 +49,7 @@ export const BookNavigator = memo(function BookNavigator({ portions, annotations
   const layout = useMemo(() => layoutNavigator(chapters, notes, mode, height, Boolean(coverUrl), labelHeights), [chapters, notes, mode, height, coverUrl, labelHeights]);
   const position = navigatorPosition(layout.groups, focusedIndex, mode);
   const offset = mode === 'portions' ? dragOffset ?? height / 2 - position : 0;
-  const scrollable = mode === 'chapters' || mode === 'notes' || (mode === 'book' && layout.height > height);
+  const scrollable = mode === 'chapters' || mode === 'notes';
   const activeChapter = layout.groups.find(group => focusedIndex >= group.start && focusedIndex <= group.end);
 
   useLayoutEffect(() => {
@@ -133,7 +135,7 @@ export const BookNavigator = memo(function BookNavigator({ portions, annotations
     const prioritized = [...layout.groups].sort((a, b) => Number(b === activeChapter) - Number(a === activeChapter));
     prioritized.forEach(group => {
       const y = mode === 'portions' && group === activeChapter ? position : group.top + group.height / 2;
-      if (mode === 'chapters' || mode === 'book' || (y + offset >= (mode === 'portions' ? 80 : 18) && y + offset < height - (mode === 'portions' ? 88 : 18) &&
+      if (mode === 'chapters' || (y + offset >= (mode === 'portions' ? 80 : 18) && y + offset < height - (mode === 'portions' ? 88 : 18) &&
         chapterLabels.every(label => Math.abs(label.y - y) >= 40))) chapterLabels.push({ id: group.id, y });
     });
   }
@@ -169,10 +171,10 @@ export const BookNavigator = memo(function BookNavigator({ portions, annotations
             const progress = Math.max(0, Math.min(1, (focusedIndex - group.start + 0.5) / (group.end - group.start + 1)));
             const label = chapterLabels.find(label => label.id === group.id);
             const visible = mode !== 'notes' || group.notes.length > 0;
-            return <div key={group.id} className={`navigator-chapter${group === activeChapter ? ' active' : ''}`}
+            return <div key={group.id} className={`navigator-chapter${group.isPart ? ' is-part' : ''}${group === activeChapter ? ' active' : ''}`}
               style={{ transform: `translateY(${group.top}px)`, opacity: visible ? 1 : 0 }}>
               <div className="navigator-chapter-bar" style={{ transform: `scaleY(${group.height})`,
-                background: `linear-gradient(to bottom, var(--navigator-completed) ${progress * 100}%, var(--navigator-upcoming) ${progress * 100}%)` }} />
+                background: `linear-gradient(to bottom, var(--navigator-group-completed, var(--navigator-completed)) ${progress * 100}%, var(--navigator-group-upcoming, var(--navigator-upcoming)) ${progress * 100}%)` }} />
               <button type="button" className={`navigator-chapter-label${label && expanded ? ' visible' : ''}`}
                 data-chapter-id={group.id}
                 style={{ transform: `translateY(${(label?.y ?? group.top + group.height / 2) - group.top}px) translateY(-50%)` }}

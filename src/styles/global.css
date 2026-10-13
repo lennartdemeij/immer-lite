@@ -1156,6 +1156,18 @@ button {
 .side-left :is(.navigator-chapter-label, .navigator-note-label) { right: auto; left: 44px; }
 .navigator-chapter-label { padding: 8px 12px; font: 500 0.8rem/1.25 system-ui, sans-serif; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .navigator-chapter.active .navigator-chapter-label { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--reader-glass-bg)); font-weight: 650; }
+.navigator-chapter.is-part {
+  --navigator-group-completed: color-mix(in srgb, var(--navigator-completed) 82%, var(--text));
+  --navigator-group-upcoming: color-mix(in srgb, var(--navigator-upcoming) 82%, var(--accent));
+}
+.navigator-chapter.is-part .navigator-chapter-label {
+  color: color-mix(in srgb, var(--text) 90%, var(--accent));
+  background: color-mix(in srgb, var(--reader-glass-bg) 88%, var(--accent));
+}
+.navigator-chapter.is-part.active .navigator-chapter-label {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--reader-glass-bg) 78%, var(--accent));
+}
 :is(.navigator-chapter-label, .navigator-note-label).visible { opacity: 1; pointer-events: auto; }
 :is(.navigator-chapter-label, .navigator-note-label).visible:disabled { opacity: 0.6; cursor: default; }
 .navigator-note { position: absolute; inset: 0 0 auto; transition: transform 420ms cubic-bezier(0.16, 1, 0.3, 1); }

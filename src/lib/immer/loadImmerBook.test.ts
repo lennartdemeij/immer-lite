@@ -70,6 +70,8 @@ describe('Immer book adapter', () => {
     expect(book.toc).toHaveLength(2);
     expect(book.toc.reduce((count, part) => count + part.children.length, 0)).toBe(26);
     expect(book.sections).toHaveLength(28);
+    expect(book.sections.filter(section => section.navigationKind === 'part')).toHaveLength(2);
+    expect(book.sections.filter(section => section.navigationKind === 'chapter')).toHaveLength(26);
     expect(book.totalBlocks).toBe(926);
     const blocks = book.sections.flatMap((section) => section.blocks) as TextBlock[];
     const sourceIds = new Set(blocks.flatMap((block) => block.inlineContent.map((inline) => inline.sourceItemLocationId)));

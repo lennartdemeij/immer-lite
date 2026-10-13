@@ -1,4 +1,5 @@
 import type { ReaderPortion, TextAnnotation } from '../../types/reader';
+import type { BookSection } from '../../types/book';
 
 export type NavigatorMode = 'portions' | 'book' | 'chapters' | 'notes';
 export interface NavigatorChapter {
@@ -6,6 +7,7 @@ export interface NavigatorChapter {
   label: string;
   start: number;
   end: number;
+  isPart?: boolean;
 }
 export interface NavigatorNote { annotation: TextAnnotation; index: number }
 export interface NavigatorGroup extends NavigatorChapter {
@@ -14,12 +16,17 @@ export interface NavigatorGroup extends NavigatorChapter {
   notes: Array<NavigatorNote & { y: number }>;
 }
 
-export function getNavigatorChapters(portions: ReaderPortion[]): NavigatorChapter[] {
+export function getNavigatorChapters(portions: ReaderPortion[], sections: BookSection[] = []): NavigatorChapter[] {
   const chapters: NavigatorChapter[] = [];
+  const sectionKinds = new Map(sections.map(section => [section.id, section.navigationKind]));
   portions.forEach((portion, index) => {
     const previous = chapters.at(-1);
     if (previous?.id === portion.sectionId) previous.end = index;
-    else chapters.push({ id: portion.sectionId, label: portion.sectionLabel, start: index, end: index });
+    else {
+      const kind = sectionKinds.get(portion.sectionId);
+      chapters.push({ id: portion.sectionId, label: portion.sectionLabel, start: index, end: index,
+        isPart: kind ? kind === 'part' : /^(?:part|book|deel|boek|teil|livre|parte)\b/i.test(portion.sectionLabel) });
+    }
   });
   return chapters;
 }
@@ -35,7 +42,6 @@ export function layoutNavigator(
   const gap = mode === 'book' ? Math.min(3, space / Math.max(1, chapters.length * 4)) : mode === 'notes' ? 12 : 3;
   const bookHeight = Math.max(0, space - gap * Math.max(0, chapters.length - 1));
   const minimumHeight = (chapter: NavigatorChapter) => Math.max(44, labelHeights.get(chapter.id) ?? 0);
-  const remainingBookHeight = Math.max(0, bookHeight - chapters.reduce((sum, chapter) => sum + minimumHeight(chapter), 0));
   let top = coverHeight;
   let visibleGroups = 0;
   const groups: NavigatorGroup[] = chapters.map((chapter) => {
@@ -43,7 +49,7 @@ export function layoutNavigator(
     const visible = mode !== 'notes' || chapterNotes.length > 0;
     if (visible && visibleGroups++ > 0) top += gap;
     const portionCount = chapter.end - chapter.start + 1;
-    const height = mode === 'book' ? minimumHeight(chapter) + remainingBookHeight * portionCount / Math.max(1, count)
+    const height = mode === 'book' ? bookHeight * portionCount / Math.max(1, count)
       : mode === 'chapters' ? minimumHeight(chapter) : mode === 'notes' ? chapterNotes.length * 40 : Math.max(minimumHeight(chapter), portionCount * 4);
     const group = { ...chapter, top, height, notes: chapterNotes.map((note, i) => ({ ...note,
       y: top + (mode === 'notes' ? i * 40 + 20 : (note.index - chapter.start + 0.5) / portionCount * height)

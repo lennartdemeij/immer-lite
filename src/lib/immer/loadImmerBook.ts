@@ -110,6 +110,7 @@ export function adaptImmerBook(data: ImmerBookData): CanonicalBook {
     const label = node.headerTextOverride ?? headers.map((id) => getSource(id).itemLocationIds
       .filter((item) => item.type === 'TEXT').map((item) => item.text).join(' ')).join(' ');
     const group = createGroup(headers[0], label, depth);
+    group.section.navigationKind = node.type === 'PART' ? 'part' : node.type === 'CHAPTER' ? 'chapter' : 'subchapter';
     for (const id of headers) {
       headings.set(id, node.type === 'PART' ? 1 : node.type === 'CHAPTER' ? 2 : 3);
       addSource(id, group);

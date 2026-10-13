@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import type { TextAnnotation } from '../../types/reader';
-import { layoutNavigator, navigatorIndexAt, navigatorPosition, type NavigatorChapter } from './navigatorLayout';
+import type { ReaderPortion, TextAnnotation } from '../../types/reader';
+import type { BookSection } from '../../types/book';
+import { getNavigatorChapters, layoutNavigator, navigatorIndexAt, navigatorPosition, type NavigatorChapter } from './navigatorLayout';
 
 const chapters: NavigatorChapter[] = [
   { id: 'a', label: 'One', start: 0, end: 899 },
@@ -28,12 +29,12 @@ describe('navigator zoom layouts', () => {
     expect(layout.height).toBeGreaterThan(100);
   });
 
-  it('reserves the measured label height for short parts and chapters in every reading mode', () => {
+  it('reserves the measured label height for short parts and chapters in portions and chapters modes', () => {
     const groups = [
       { id: 'part', label: 'Part One', start: 0, end: 0 },
       { id: 'chapter', label: 'Chapter One', start: 1, end: 20 }
     ];
-    for (const mode of ['portions', 'book', 'chapters'] as const) {
+    for (const mode of ['portions', 'chapters'] as const) {
       const layout = layoutNavigator(groups, [], mode, 100, false, new Map([['part', 60], ['chapter', 52]]));
       expect(layout.groups[0].height).toBeGreaterThanOrEqual(60);
       expect(layout.groups[1].height).toBeGreaterThanOrEqual(52);
@@ -44,10 +45,22 @@ describe('navigator zoom layouts', () => {
     }
   });
 
-  it('lets the book overview exceed its viewport when the labels cannot fit', () => {
-    const layout = layoutNavigator(chapters, [], 'book', 100, false);
-    expect(layout.groups.every(group => group.height >= 44)).toBe(true);
-    expect(layout.height).toBeGreaterThan(100);
+  it('keeps the complete book overview within its viewport even with oversized labels', () => {
+    const layout = layoutNavigator(chapters, [], 'book', 100, false, new Map(chapters.map(chapter => [chapter.id, 120])));
+    expect(layout.height).toBeLessThanOrEqual(90);
+    expect(layout.groups[1].height).toBeLessThan(44);
+    expect(layout.groups[0].height / layout.groups[1].height).toBeCloseTo(90);
+  });
+
+  it('recognizes parts from source metadata even when their title does not name the part', () => {
+    const portions = [
+      { sectionId: 'part', sectionLabel: 'The Coming of the Martians' },
+      { sectionId: 'chapter', sectionLabel: 'Book of Stories' }
+    ] as ReaderPortion[];
+    const sections = [
+      { id: 'part', navigationKind: 'part' }, { id: 'chapter', navigationKind: 'chapter' }
+    ] as BookSection[];
+    expect(getNavigatorChapters(portions, sections).map(chapter => chapter.isPart)).toEqual([true, false]);
   });
 
   it('sizes note chapters by their labels and keeps same-portion notes separate', () => {

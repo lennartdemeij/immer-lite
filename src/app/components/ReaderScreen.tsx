@@ -1701,7 +1701,7 @@ export function ReaderScreen({
         <span>Get back</span>
       </button> : null}
       <BookNavigator key={book.fingerprint} navigatorRef={navigatorRef}
-        portions={portions} annotations={annotations} focusedIndex={focusedPortionIndex} coverUrl={coverUrl}
+        portions={portions} sections={book.sections} annotations={annotations} focusedIndex={focusedPortionIndex} coverUrl={coverUrl}
         expanded={navigatorExpanded} side={requestedSettings.navigatorSide ?? 'right'}
         disabled={readAloud.isPlaying || paginationPending} onJump={handleNavigatorJump}
         onNote={handleAnnotationPress} onOpen={openNavigator} onDismiss={dismissNavigator} onDragging={setProgressDragging} onTilt={setProgressTilt} />
